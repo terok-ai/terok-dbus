@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+/build/
+/dist/
+/src/terok_dbus.egg-info/
+.coverage
+reports/
+/.idea
+.complexipy_cache/
+docs/ci_map.md
+site/
+tmp/

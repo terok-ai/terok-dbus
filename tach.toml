@@ -1,0 +1,23 @@
+exclude = [
+    "**/__pycache__",
+    "**/tests/**",
+    "build",
+    "dist",
+    ".venv",
+    "docs",
+]
+
+source_roots = ["src"]
+exact = true
+forbid_circular_dependencies = true
+ignore_type_checking_imports = true
+
+# ── Module Boundaries ───────────────────────────────────────────────
+#
+# Flat structure: modules are added as they are implemented.
+# For now, only the package root is declared.
+
+# Package root — public API
+[[modules]]
+path = "terok_dbus"
+depends_on = []
