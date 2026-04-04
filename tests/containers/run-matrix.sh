@@ -93,11 +93,17 @@ warn_keyring() {
         done
     fi
     if [[ -z "$conf" ]] || ! grep -qE '^\s*keyring\s*=\s*false' "$conf" 2>/dev/null; then
-        echo -e "${C_YELLOW}WARNING: kernel keyring is not disabled in containers.conf${C_RESET}"
-        echo -e "${C_YELLOW}  Matrix tests create many containers and may exhaust the per-user${C_RESET}"
-        echo -e "${C_YELLOW}  keyring quota (200 keys), causing spurious EDQUOT errors.${C_RESET}"
-        echo -e "${C_YELLOW}  Fix: add ${C_BOLD}[containers] keyring = false${C_YELLOW} to ~/.config/containers/containers.conf${C_RESET}"
-        echo -e "${C_YELLOW}  See: https://terok-ai.github.io/terok/kernel-keyring/${C_RESET}"
+        echo -e "${C_YELLOW}WARNING: kernel keyring is not disabled in containers.conf"
+        echo -e ""
+        echo -e "  Matrix tests create many containers and may exhaust the per-user"
+        echo -e "  keyring quota (200 keys), causing spurious EDQUOT errors."
+        echo -e ""
+        echo -e "  Add to ${C_BOLD}~/.config/containers/containers.conf${C_YELLOW}:"
+        echo -e ""
+        echo -e "    ${C_BOLD}[containers]${C_YELLOW}"
+        echo -e "    ${C_BOLD}keyring = false${C_YELLOW}"
+        echo -e ""
+        echo -e "  See: https://terok-ai.github.io/terok/kernel-keyring/${C_RESET}"
         echo ""
     fi
 }
