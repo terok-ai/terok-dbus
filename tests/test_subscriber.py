@@ -15,6 +15,15 @@ from terok_dbus._interfaces import (
     SHIELD_INTERFACE_NAME,
 )
 from terok_dbus._subscriber import EventSubscriber
+from tests.conftest import (
+    CONTAINER,
+    DEST_IP,
+    DOMAIN,
+    PROJECT,
+    REASON,
+    RESOLVED_IPS,
+    TASK,
+)
 
 
 @pytest.fixture
@@ -111,12 +120,12 @@ class TestEventSubscriberShield:
 
         iface = _shield_iface(mock_bus)
         callback = iface.on_connection_blocked.call_args[0][0]
-        callback("mycontainer", "1.2.3.4", 443, 6, "example.com", "req-1")
+        callback(CONTAINER, DEST_IP, 443, 6, DOMAIN, "req-1")
         await asyncio.sleep(0)
 
         mock_notifier.notify.assert_awaited_once()
         call_kwargs = mock_notifier.notify.call_args
-        assert "Blocked: example.com:443" in call_kwargs[0][0]
+        assert f"Blocked: {DOMAIN}:443" in call_kwargs[0][0]
         assert call_kwargs.kwargs["hints"] is not None
         assert ("accept", "Allow") in call_kwargs.kwargs["actions"]
         assert ("deny", "Deny") in call_kwargs.kwargs["actions"]
@@ -130,11 +139,11 @@ class TestEventSubscriberShield:
 
         iface = _shield_iface(mock_bus)
         callback = iface.on_connection_blocked.call_args[0][0]
-        callback("ctr", "10.0.0.1", 80, 6, "", "req-2")
+        callback(CONTAINER, DEST_IP, 80, 6, "", "req-2")
         await asyncio.sleep(0)
 
         summary = mock_notifier.notify.call_args[0][0]
-        assert "10.0.0.1:80" in summary
+        assert f"{DEST_IP}:80" in summary
         await sub.stop()
 
     async def test_connection_blocked_registers_action_callback(
@@ -145,7 +154,7 @@ class TestEventSubscriberShield:
 
         iface = _shield_iface(mock_bus)
         callback = iface.on_connection_blocked.call_args[0][0]
-        callback("ctr", "1.2.3.4", 443, 6, "test.com", "req-1")
+        callback(CONTAINER, DEST_IP, 443, 6, DOMAIN, "req-1")
         await asyncio.sleep(0)
 
         mock_notifier.on_action.assert_awaited_once()
@@ -158,7 +167,7 @@ class TestEventSubscriberShield:
 
         iface = _shield_iface(mock_bus)
         callback = iface.on_connection_blocked.call_args[0][0]
-        callback("ctr", "1.2.3.4", 443, 6, "test.com", "req-1")
+        callback(CONTAINER, DEST_IP, 443, 6, DOMAIN, "req-1")
         await asyncio.sleep(0)
 
         # Extract the action callback passed to on_action and invoke it
@@ -178,13 +187,13 @@ class TestEventSubscriberShield:
 
         # First: ConnectionBlocked creates notification (id=42)
         blocked_cb = iface.on_connection_blocked.call_args[0][0]
-        blocked_cb("ctr", "1.2.3.4", 443, 6, "test.com", "req-1")
+        blocked_cb(CONTAINER, DEST_IP, 443, 6, DOMAIN, "req-1")
         await asyncio.sleep(0)
 
         # Second: VerdictApplied updates it
         mock_notifier.notify.reset_mock()
         verdict_cb = iface.on_verdict_applied.call_args[0][0]
-        verdict_cb("ctr", "1.2.3.4", "req-1", "accept", True)
+        verdict_cb(CONTAINER, DEST_IP, "req-1", "accept", True)
         await asyncio.sleep(0)
 
         mock_notifier.notify.assert_awaited_once()
@@ -204,13 +213,13 @@ class TestEventSubscriberClearance:
 
         iface = _clearance_iface(mock_bus)
         callback = iface.on_request_received.call_args[0][0]
-        callback("req-10", "myproject", "build", "pypi.org", 443, "install deps")
+        callback("req-10", PROJECT, TASK, DOMAIN, 443, REASON)
         await asyncio.sleep(0)
 
         mock_notifier.notify.assert_awaited_once()
         summary = mock_notifier.notify.call_args[0][0]
-        assert "build" in summary
-        assert "pypi.org:443" in summary
+        assert TASK in summary
+        assert f"{DOMAIN}:443" in summary
         await sub.stop()
 
     async def test_action_calls_resolve(self, mock_bus: MagicMock, mock_notifier: AsyncMock):
@@ -219,7 +228,7 @@ class TestEventSubscriberClearance:
 
         iface = _clearance_iface(mock_bus)
         callback = iface.on_request_received.call_args[0][0]
-        callback("req-10", "proj", "task", "example.com", 443, "reason")
+        callback("req-10", PROJECT, TASK, DOMAIN, 443, REASON)
         await asyncio.sleep(0)
 
         action_cb = mock_notifier.on_action.call_args[0][1]
@@ -237,12 +246,12 @@ class TestEventSubscriberClearance:
         iface = _clearance_iface(mock_bus)
 
         received_cb = iface.on_request_received.call_args[0][0]
-        received_cb("req-10", "proj", "task", "example.com", 443, "reason")
+        received_cb("req-10", PROJECT, TASK, DOMAIN, 443, REASON)
         await asyncio.sleep(0)
 
         mock_notifier.notify.reset_mock()
         resolved_cb = iface.on_request_resolved.call_args[0][0]
-        resolved_cb("req-10", "accept", ["1.2.3.4", "5.6.7.8"])
+        resolved_cb("req-10", "accept", RESOLVED_IPS)
         await asyncio.sleep(0)
 
         mock_notifier.notify.assert_awaited_once()

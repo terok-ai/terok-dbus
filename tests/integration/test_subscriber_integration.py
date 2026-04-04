@@ -20,6 +20,7 @@ from terok_dbus._interfaces import (
     SHIELD_OBJECT_PATH,
 )
 from terok_dbus._subscriber import EventSubscriber
+from tests.conftest import CONTAINER, DEST_IP, DOMAIN, DOMAIN_ALT, PROJECT, REASON, TASK
 
 # ── Mock D-Bus services ───────────────────────────────────────────────
 
@@ -161,12 +162,12 @@ class TestShieldSubscriberIntegration:
         # Allow signal subscriptions to settle
         await asyncio.sleep(0.1)
 
-        shield_service.emit_connection_blocked("ctr1", "10.0.0.1", 443, 6, "example.com", "req-1")
+        shield_service.emit_connection_blocked(CONTAINER, DEST_IP, 443, 6, DOMAIN, "req-1")
         await asyncio.sleep(0.2)
 
         mock_notifier.notify.assert_awaited_once()
         summary = mock_notifier.notify.call_args[0][0]
-        assert "example.com:443" in summary
+        assert f"{DOMAIN}:443" in summary
         await sub.stop()
 
     async def test_action_routes_verdict_to_service(
@@ -180,7 +181,7 @@ class TestShieldSubscriberIntegration:
         await sub.start()
         await asyncio.sleep(0.1)
 
-        shield_service.emit_connection_blocked("ctr1", "10.0.0.1", 443, 6, "test.com", "req-2")
+        shield_service.emit_connection_blocked(CONTAINER, DEST_IP, 443, 6, DOMAIN_ALT, "req-2")
         await asyncio.sleep(0.2)
 
         # Simulate operator clicking "Allow"
@@ -207,13 +208,13 @@ class TestClearanceSubscriberIntegration:
         await sub.start()
         await asyncio.sleep(0.1)
 
-        clearance_service.emit_request_received("req-10", "proj", "build", "pypi.org", 443, "deps")
+        clearance_service.emit_request_received("req-10", PROJECT, TASK, DOMAIN, 443, REASON)
         await asyncio.sleep(0.2)
 
         mock_notifier.notify.assert_awaited_once()
         summary = mock_notifier.notify.call_args[0][0]
-        assert "build" in summary
-        assert "pypi.org:443" in summary
+        assert TASK in summary
+        assert f"{DOMAIN}:443" in summary
         await sub.stop()
 
     async def test_action_routes_resolve_to_service(
@@ -227,7 +228,7 @@ class TestClearanceSubscriberIntegration:
         await sub.start()
         await asyncio.sleep(0.1)
 
-        clearance_service.emit_request_received("req-11", "proj", "test", "npm.org", 443, "install")
+        clearance_service.emit_request_received("req-11", PROJECT, TASK, DOMAIN_ALT, 443, REASON)
         await asyncio.sleep(0.2)
 
         action_cb = mock_notifier.on_action.call_args[0][1]
