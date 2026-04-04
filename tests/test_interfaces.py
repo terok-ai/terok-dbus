@@ -129,6 +129,7 @@ class TestClearanceXml:
         assert "ListPending" in methods
         m = methods["ListPending"]
         assert len(m.in_args) == 0
+        assert m.out_args[0].name == "requests"
         assert m.out_args[0].signature == "a(ssssqs)"
 
     def test_request_resolved_signal(self):

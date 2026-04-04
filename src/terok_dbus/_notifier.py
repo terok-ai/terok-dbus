@@ -98,7 +98,7 @@ class DbusNotifier:
             summary,
             body,
             actions_flat,
-            dict(hints) if hints else {},
+            dict(hints) if hints is not None else {},
             timeout_ms,
         )
 

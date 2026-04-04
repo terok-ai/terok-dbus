@@ -75,7 +75,7 @@ CLEARANCE_XML = """\
       <arg type="b" name="ok" direction="out"/>
     </method>
     <method name="ListPending">
-      <arg type="a(ssssqs)" name="pending" direction="out"/>
+      <arg type="a(ssssqs)" name="requests" direction="out"/>
     </method>
     <signal name="RequestResolved">
       <arg type="s" name="request_id" direction="out"/>

@@ -90,6 +90,7 @@ class EventSubscriber:
         """Unsubscribe from signals and disconnect the bus if owned."""
         for task in self._tasks:
             task.cancel()
+        await asyncio.sleep(0)  # yield to let cancellations propagate
         self._tasks.clear()
 
         if self._shield_iface is not None:
