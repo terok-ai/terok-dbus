@@ -11,9 +11,9 @@ from typing import Protocol, runtime_checkable
 class Notifier(Protocol):
     """Structural type for desktop notification backends.
 
-    Implementations must provide ``notify``, ``on_action``, and ``close``.
-    ``DbusNotifier`` talks to a real session bus; ``NullNotifier`` silently
-    discards everything for headless environments.
+    Implementations must provide ``notify``, ``on_action``, ``close``, and
+    ``disconnect``.  ``DbusNotifier`` talks to a real session bus;
+    ``NullNotifier`` silently discards everything for headless environments.
     """
 
     async def notify(
@@ -56,4 +56,8 @@ class Notifier(Protocol):
         Args:
             notification_id: ID returned by ``notify``.
         """
+        ...
+
+    async def disconnect(self) -> None:
+        """Release backend resources (no-op for null backends)."""
         ...

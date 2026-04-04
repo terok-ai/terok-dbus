@@ -32,3 +32,6 @@ class NullNotifier:
 
     async def close(self, notification_id: int) -> None:
         """Accept and discard a close request."""
+
+    async def disconnect(self) -> None:
+        """Accept and discard a teardown request."""

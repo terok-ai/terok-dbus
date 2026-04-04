@@ -3,6 +3,7 @@
 
 """Tests for DbusNotifier — mocked dbus-fast interactions."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -114,6 +115,12 @@ class TestDbusNotifierNotify:
             notifier = DbusNotifier()
             await notifier.notify("a")
             await notifier.notify("b")
+            mock_bus.connect.assert_awaited_once()
+
+    async def test_concurrent_notify_connects_once(self, mock_bus: MagicMock):
+        with patch("terok_dbus._notifier.MessageBus", return_value=mock_bus):
+            notifier = DbusNotifier()
+            await asyncio.gather(notifier.notify("a"), notifier.notify("b"))
             mock_bus.connect.assert_awaited_once()
 
 

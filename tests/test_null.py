@@ -35,3 +35,6 @@ class TestNullNotifier:
 
     async def test_close_is_noop(self, null: NullNotifier):
         await null.close(42)  # should not raise
+
+    async def test_disconnect_is_noop(self, null: NullNotifier):
+        await null.disconnect()  # should not raise
