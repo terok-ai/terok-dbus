@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-# Fedora 43 — dbus + dunst, system Python 3.12+
+# Fedora 43 — dbus + dbusmock deps, system Python 3.12+
 FROM registry.fedoraproject.org/fedora:43
 
 RUN dnf install -y \
     dbus \
+    gcc python3-devel dbus-devel glib2-devel pkgconf meson \
     python3 python3-pip \
     git curl \
     && dnf clean all

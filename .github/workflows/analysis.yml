@@ -44,6 +44,9 @@ jobs:
           path: .venv
           key: venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-test-${{ hashFiles('**/pyproject.toml', '**/poetry.lock') }}
 
+      - name: Install system dependencies (dbus-python build)
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev libglib2.0-dev pkg-config meson
+
       - name: Install dependencies
         run: poetry install --with test --no-interaction
 
@@ -120,7 +123,7 @@ jobs:
         run: poetry self add "poetry-dynamic-versioning[plugin]==1.10.0"
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y dbus
+        run: sudo apt-get update && sudo apt-get install -y dbus gcc libdbus-1-dev libglib2.0-dev pkg-config meson
 
       - name: Install project dependencies
         run: poetry install --with test --no-interaction

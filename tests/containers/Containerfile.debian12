@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-# Debian 12 (Bookworm) — dbus + dunst, Python 3.12 via uv
+# Debian 12 (Bookworm) — dbus + dbusmock deps, Python 3.12 via uv
 FROM docker.io/library/debian:12
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     dbus \
+    gcc python3-dev libdbus-1-dev libglib2.0-dev pkg-config meson \
     python3 \
     git curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
