@@ -51,5 +51,6 @@ class TestNotifyLifecycle:
     async def test_disconnect_is_idempotent(self, dbus_session: str, notification_daemon: None):
         """Calling disconnect() twice does not raise."""
         notifier = await create_notifier()
+        assert isinstance(notifier, DbusNotifier)
         await notifier.disconnect()
         await notifier.disconnect()
