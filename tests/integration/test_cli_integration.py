@@ -28,7 +28,7 @@ class TestCliIntegration:
             timeout=10,
             env=os.environ,
         )
-        assert result.returncode == 0
+        assert result.returncode == 0, result.stderr
         nid = int(result.stdout.strip())
         assert nid > 0
 
@@ -41,7 +41,7 @@ class TestCliIntegration:
             timeout=10,
             env=os.environ,
         )
-        assert result.returncode == 0
+        assert result.returncode == 0, result.stderr
         nid = int(result.stdout.strip())
         assert nid > 0
 
@@ -54,6 +54,6 @@ class TestCliIntegration:
             timeout=10,
             env=os.environ,
         )
-        assert result.returncode == 0
+        assert result.returncode == 0, result.stderr
         nid = int(result.stdout.strip())
         assert nid > 0

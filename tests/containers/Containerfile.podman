@@ -11,5 +11,5 @@ RUN dnf install -y \
     git curl \
     && dnf clean all
 
-# The podman image ships a pre-existing 'podman' user (uid 1000).
+RUN useradd -m podman
 WORKDIR /src
