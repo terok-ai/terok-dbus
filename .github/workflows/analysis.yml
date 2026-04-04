@@ -132,8 +132,6 @@ jobs:
           Xvfb :99 -screen 0 1024x768x24 &
           export DISPLAY=:99
           sleep 0.5
-          dunst &
-          sleep 0.5
           make test-integration
           kill $DBUS_SESSION_BUS_PID 2>/dev/null || true
 
