@@ -70,6 +70,16 @@ class TestDbusNotifierConnect:
             iface.off_action_invoked.assert_called_once_with(notifier._handle_action)
             iface.off_notification_closed.assert_called_once_with(notifier._handle_closed)
 
+    async def test_connect_failure_disconnects_bus(self, mock_bus: MagicMock):
+        mock_bus.introspect = AsyncMock(side_effect=RuntimeError("boom"))
+        with patch("terok_dbus._notifier.MessageBus", return_value=mock_bus):
+            notifier = DbusNotifier()
+            with pytest.raises(RuntimeError, match="boom"):
+                await notifier._connect()
+            mock_bus.disconnect.assert_called_once()
+            assert notifier._bus is None
+            assert notifier._interface is None
+
 
 class TestDbusNotifierNotify:
     """Notification sending tests."""

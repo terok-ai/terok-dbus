@@ -33,13 +33,15 @@ class DbusNotifier:
     async def _connect(self) -> None:
         """Establish the session-bus connection and subscribe to signals."""
         bus = await MessageBus().connect()
-        introspection = await bus.introspect(BUS_NAME, OBJECT_PATH)
-        proxy = bus.get_proxy_object(BUS_NAME, OBJECT_PATH, introspection)
-        iface = proxy.get_interface(INTERFACE_NAME)
-
-        iface.on_action_invoked(self._handle_action)
-        iface.on_notification_closed(self._handle_closed)
-
+        try:
+            introspection = await bus.introspect(BUS_NAME, OBJECT_PATH)
+            proxy = bus.get_proxy_object(BUS_NAME, OBJECT_PATH, introspection)
+            iface = proxy.get_interface(INTERFACE_NAME)
+            iface.on_action_invoked(self._handle_action)
+            iface.on_notification_closed(self._handle_closed)
+        except Exception:
+            bus.disconnect()
+            raise
         self._bus = bus
         self._interface = iface
 
