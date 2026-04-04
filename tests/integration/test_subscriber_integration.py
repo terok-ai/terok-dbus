@@ -25,23 +25,29 @@ from terok_dbus._subscriber import EventSubscriber
 
 
 class MockShield1(ServiceInterface):
-    """Mock implementation of org.terok.Shield1 for testing."""
+    """Mock implementation of org.terok.Shield1 for testing.
+
+    dbus-fast signals derive their D-Bus type signature from the return
+    annotation, not from parameter annotations.  The ``emit_*`` helpers
+    stash arguments and call the bare signal method.
+    """
 
     def __init__(self) -> None:
         super().__init__(SHIELD_INTERFACE_NAME)
         self._verdict_log: list[tuple[str, str]] = []
+        self._sig_args: list = []
 
     @signal()
-    def connection_blocked(
-        self,
-        container: "s",
-        dest: "s",
-        port: "q",
-        proto: "q",
-        domain: "s",
-        request_id: "s",
-    ) -> None:
+    def connection_blocked(self) -> "ssqqss":
         """Emit a ConnectionBlocked signal."""
+        return self._sig_args
+
+    def emit_connection_blocked(
+        self, container: str, dest: str, port: int, proto: int, domain: str, request_id: str
+    ) -> None:
+        """Convenience emitter for ConnectionBlocked."""
+        self._sig_args = [container, dest, port, proto, domain, request_id]
+        self.connection_blocked()
 
     @method()
     def verdict(self, request_id: "s", action: "s") -> "b":
@@ -50,35 +56,40 @@ class MockShield1(ServiceInterface):
         return True
 
     @signal()
-    def verdict_applied(
-        self,
-        container: "s",
-        dest: "s",
-        request_id: "s",
-        action: "s",
-        ok: "b",
-    ) -> None:
+    def verdict_applied(self) -> "ssssb":
         """Emit a VerdictApplied signal."""
+        return self._sig_args
+
+    def emit_verdict_applied(
+        self, container: str, dest: str, request_id: str, action: str, ok: bool
+    ) -> None:
+        """Convenience emitter for VerdictApplied."""
+        self._sig_args = [container, dest, request_id, action, ok]
+        self.verdict_applied()
 
 
 class MockClearance1(ServiceInterface):
-    """Mock implementation of org.terok.Clearance1 for testing."""
+    """Mock implementation of org.terok.Clearance1 for testing.
+
+    Same pattern as ``MockShield1`` — return-type signals with emit helpers.
+    """
 
     def __init__(self) -> None:
         super().__init__(CLEARANCE_INTERFACE_NAME)
         self._resolve_log: list[tuple[str, str]] = []
+        self._sig_args: list = []
 
     @signal()
-    def request_received(
-        self,
-        request_id: "s",
-        project: "s",
-        task: "s",
-        dest: "s",
-        port: "q",
-        reason: "s",
-    ) -> None:
+    def request_received(self) -> "ssssqs":
         """Emit a RequestReceived signal."""
+        return self._sig_args
+
+    def emit_request_received(
+        self, request_id: str, project: str, task: str, dest: str, port: int, reason: str
+    ) -> None:
+        """Convenience emitter for RequestReceived."""
+        self._sig_args = [request_id, project, task, dest, port, reason]
+        self.request_received()
 
     @method()
     def resolve(self, request_id: "s", action: "s") -> "b":
@@ -87,13 +98,14 @@ class MockClearance1(ServiceInterface):
         return True
 
     @signal()
-    def request_resolved(
-        self,
-        request_id: "s",
-        action: "s",
-        ips: "as",
-    ) -> None:
+    def request_resolved(self) -> "ssas":
         """Emit a RequestResolved signal."""
+        return self._sig_args
+
+    def emit_request_resolved(self, request_id: str, action: str, ips: list[str]) -> None:
+        """Convenience emitter for RequestResolved."""
+        self._sig_args = [request_id, action, ips]
+        self.request_resolved()
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────
@@ -149,7 +161,7 @@ class TestShieldSubscriberIntegration:
         # Allow signal subscriptions to settle
         await asyncio.sleep(0.1)
 
-        shield_service.connection_blocked("ctr1", "10.0.0.1", 443, 6, "example.com", "req-1")
+        shield_service.emit_connection_blocked("ctr1", "10.0.0.1", 443, 6, "example.com", "req-1")
         await asyncio.sleep(0.2)
 
         mock_notifier.notify.assert_awaited_once()
@@ -168,7 +180,7 @@ class TestShieldSubscriberIntegration:
         await sub.start()
         await asyncio.sleep(0.1)
 
-        shield_service.connection_blocked("ctr1", "10.0.0.1", 443, 6, "test.com", "req-2")
+        shield_service.emit_connection_blocked("ctr1", "10.0.0.1", 443, 6, "test.com", "req-2")
         await asyncio.sleep(0.2)
 
         # Simulate operator clicking "Allow"
@@ -195,7 +207,7 @@ class TestClearanceSubscriberIntegration:
         await sub.start()
         await asyncio.sleep(0.1)
 
-        clearance_service.request_received("req-10", "proj", "build", "pypi.org", 443, "deps")
+        clearance_service.emit_request_received("req-10", "proj", "build", "pypi.org", 443, "deps")
         await asyncio.sleep(0.2)
 
         mock_notifier.notify.assert_awaited_once()
@@ -215,7 +227,7 @@ class TestClearanceSubscriberIntegration:
         await sub.start()
         await asyncio.sleep(0.1)
 
-        clearance_service.request_received("req-11", "proj", "test", "npm.org", 443, "install")
+        clearance_service.emit_request_received("req-11", "proj", "test", "npm.org", 443, "install")
         await asyncio.sleep(0.2)
 
         action_cb = mock_notifier.on_action.call_args[0][1]
