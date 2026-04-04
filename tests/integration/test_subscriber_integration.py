@@ -166,8 +166,13 @@ class TestShieldSubscriberIntegration:
         await asyncio.sleep(0.2)
 
         mock_notifier.notify.assert_awaited_once()
-        summary = mock_notifier.notify.call_args[0][0]
-        assert f"{DOMAIN}:443" in summary
+        call = mock_notifier.notify.call_args
+        assert f"{DOMAIN}:443" in call[0][0]
+        assert ("accept", "Allow") in call.kwargs["actions"]
+        assert ("deny", "Deny") in call.kwargs["actions"]
+        assert call.kwargs["hints"]["urgency"].value == 2  # critical
+        assert call.kwargs["hints"]["resident"].value is True
+        assert call.kwargs["timeout_ms"] == 0
         await sub.stop()
 
     async def test_action_routes_verdict_to_service(
@@ -192,6 +197,33 @@ class TestShieldSubscriberIntegration:
         assert ("req-2", "accept") in shield_service._verdict_log
         await sub.stop()
 
+    async def test_verdict_applied_updates_notification(
+        self, shield_service: MockShield1, subscriber_bus: MessageBus
+    ):
+        mock_notifier = AsyncMock()
+        mock_notifier.notify = AsyncMock(return_value=1)
+        mock_notifier.on_action = AsyncMock()
+
+        sub = EventSubscriber(mock_notifier, bus=subscriber_bus)
+        await sub.start()
+        await asyncio.sleep(0.1)
+
+        # ConnectionBlocked creates notification (id=1)
+        shield_service.emit_connection_blocked(CONTAINER, DEST_IP, 443, 6, DOMAIN, "req-3")
+        await asyncio.sleep(0.2)
+
+        # VerdictApplied updates it in-place
+        mock_notifier.notify.reset_mock()
+        shield_service.emit_verdict_applied(CONTAINER, DEST_IP, "req-3", "accept", True)
+        await asyncio.sleep(0.2)
+
+        mock_notifier.notify.assert_awaited_once()
+        call = mock_notifier.notify.call_args
+        assert call.kwargs["replaces_id"] == 1
+        assert "Allowed" in call[0][0]
+        assert call.kwargs["hints"]["urgency"].value == 1  # normal (resolved)
+        await sub.stop()
+
 
 @pytest.mark.needs_dbus
 class TestClearanceSubscriberIntegration:
@@ -212,9 +244,14 @@ class TestClearanceSubscriberIntegration:
         await asyncio.sleep(0.2)
 
         mock_notifier.notify.assert_awaited_once()
-        summary = mock_notifier.notify.call_args[0][0]
-        assert TASK in summary
-        assert f"{DOMAIN}:443" in summary
+        call = mock_notifier.notify.call_args
+        assert TASK in call[0][0]
+        assert f"{DOMAIN}:443" in call[0][0]
+        assert ("accept", "Allow") in call.kwargs["actions"]
+        assert ("deny", "Deny") in call.kwargs["actions"]
+        assert call.kwargs["hints"]["urgency"].value == 2
+        assert call.kwargs["hints"]["resident"].value is True
+        assert call.kwargs["timeout_ms"] == 0
         await sub.stop()
 
     async def test_action_routes_resolve_to_service(
@@ -236,4 +273,29 @@ class TestClearanceSubscriberIntegration:
         await asyncio.sleep(0.2)
 
         assert ("req-11", "deny") in clearance_service._resolve_log
+        await sub.stop()
+
+    async def test_request_resolved_updates_notification(
+        self, clearance_service: MockClearance1, subscriber_bus: MessageBus
+    ):
+        mock_notifier = AsyncMock()
+        mock_notifier.notify = AsyncMock(return_value=1)
+        mock_notifier.on_action = AsyncMock()
+
+        sub = EventSubscriber(mock_notifier, bus=subscriber_bus)
+        await sub.start()
+        await asyncio.sleep(0.1)
+
+        clearance_service.emit_request_received("req-12", PROJECT, TASK, DOMAIN, 443, REASON)
+        await asyncio.sleep(0.2)
+
+        mock_notifier.notify.reset_mock()
+        clearance_service.emit_request_resolved("req-12", "accept", [DEST_IP])
+        await asyncio.sleep(0.2)
+
+        mock_notifier.notify.assert_awaited_once()
+        call = mock_notifier.notify.call_args
+        assert call.kwargs["replaces_id"] == 1
+        assert "Approved" in call[0][0]
+        assert call.kwargs["hints"]["urgency"].value == 1
         await sub.stop()
