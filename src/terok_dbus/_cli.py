@@ -3,85 +3,46 @@
 
 """CLI entry point for ``terok-dbus`` — desktop notification tools.
 
-Subcommands
------------
-notify      Send a one-shot desktop notification.
-subscribe   Long-running bridge: Shield1/Clearance1 D-Bus signals → desktop notifications.
+Builds the argument parser from the :data:`COMMANDS` registry so the
+standalone CLI and the terok integration layer share a single source
+of truth for subcommand definitions.
 """
 
 import argparse
 import asyncio
-import logging
-import signal
 import sys
 
-from terok_dbus import EventSubscriber, create_notifier
+from terok_dbus._registry import COMMANDS, ArgDef
+
+
+def _add_arg(parser: argparse.ArgumentParser, arg: ArgDef) -> None:
+    """Register an :class:`ArgDef` with an argparse parser."""
+    kwargs: dict = {}
+    if arg.help:
+        kwargs["help"] = arg.help
+    for field in ("type", "default", "action", "dest", "nargs"):
+        val = getattr(arg, field)
+        if val is not None:
+            kwargs[field] = val
+    # Support multiple flag names separated by "/" (e.g. "-t/--timeout")
+    names = arg.name.split("/")
+    parser.add_argument(*names, **kwargs)
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Build the top-level argument parser with subcommands."""
+    """Build the top-level argument parser from the command registry."""
     parser = argparse.ArgumentParser(
         prog="terok-dbus",
         description="Desktop notification tools for the terok ecosystem.",
     )
     sub = parser.add_subparsers(dest="command")
 
-    # ── notify ─────────────────────────────────────────────────────
-    notify = sub.add_parser("notify", help="Send a one-shot desktop notification.")
-    notify.add_argument("summary", help="Notification title")
-    notify.add_argument("body", nargs="?", default="", help="Notification body text")
-    notify.add_argument(
-        "-t",
-        "--timeout",
-        type=int,
-        default=-1,
-        metavar="MS",
-        help="Expiration timeout in milliseconds (-1 = server default)",
-    )
-
-    # ── subscribe ──────────────────────────────────────────────────
-    sub.add_parser(
-        "subscribe",
-        help="Bridge Shield1/Clearance1 D-Bus signals to desktop notifications.",
-    )
+    for cmd in COMMANDS:
+        cmd_parser = sub.add_parser(cmd.name, help=cmd.help)
+        for arg in cmd.args:
+            _add_arg(cmd_parser, arg)
 
     return parser
-
-
-async def _notify(args: argparse.Namespace) -> None:
-    """Send a single notification and print its ID."""
-    notifier = await create_notifier()
-    try:
-        notification_id = await notifier.notify(
-            args.summary,
-            args.body,
-            timeout_ms=args.timeout,
-        )
-        print(notification_id)  # noqa: T201
-    finally:
-        await notifier.disconnect()
-
-
-async def _subscribe() -> None:
-    """Run the event subscriber until interrupted."""
-    logging.basicConfig(
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        level=logging.INFO,
-    )
-    notifier = await create_notifier()
-    try:
-        subscriber = EventSubscriber(notifier)
-        await subscriber.start()
-        try:
-            stop = asyncio.Event()
-            loop = asyncio.get_running_loop()
-            for sig in (signal.SIGINT, signal.SIGTERM):
-                loop.add_signal_handler(sig, stop.set)
-            await stop.wait()
-        finally:
-            await subscriber.stop()
-    finally:
-        await notifier.disconnect()
 
 
 def main() -> None:
@@ -89,16 +50,18 @@ def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
-    if args.command == "notify":
-        handler = _notify(args)
-    elif args.command == "subscribe":
-        handler = _subscribe()
-    else:
+    cmd_lookup = {cmd.name: cmd for cmd in COMMANDS}
+    cmd_def = cmd_lookup.get(args.command)
+
+    if cmd_def is None or cmd_def.handler is None:
         parser.print_help()
         sys.exit(2)
 
+    # Build kwargs from parsed args, excluding the 'command' key
+    kwargs = {k: v for k, v in vars(args).items() if k != "command"}
+
     try:
-        asyncio.run(handler)
+        asyncio.run(cmd_def.handler(**kwargs))
     except KeyboardInterrupt:
         sys.exit(130)
 

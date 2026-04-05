@@ -3,11 +3,12 @@
 
 """Tests for the terok-dbus CLI — subcommand parsing and dispatch."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from terok_dbus._cli import _build_parser, main
+from terok_dbus._registry import COMMANDS, CommandDef
 
 
 class TestNotifyParser:
@@ -64,44 +65,28 @@ class TestNotifyDispatch:
         mock_notifier.notify.return_value = 42
 
         with (
-            patch("terok_dbus._cli.create_notifier", new_callable=AsyncMock) as mock_factory,
+            patch("terok_dbus.create_notifier", new_callable=AsyncMock) as mock_factory,
             patch("sys.argv", ["terok-dbus", "notify", "Test", "Body"]),
         ):
             mock_factory.return_value = mock_notifier
             main()
-            mock_notifier.notify.assert_awaited_once_with(
-                "Test",
-                "Body",
-                timeout_ms=-1,
-            )
+            mock_notifier.notify.assert_awaited_once_with("Test", "Body", timeout_ms=-1)
+            mock_notifier.disconnect.assert_awaited_once()
 
 
 class TestSubscribeDispatch:
     """Dispatch tests for ``terok-dbus subscribe``."""
 
     def test_subscribe_dispatches_to_handler(self):
-        mock_subscriber = MagicMock()
-        mock_subscriber.start = AsyncMock()
-        mock_subscriber.stop = AsyncMock()
-        mock_notifier = AsyncMock()
+        mock_handler = AsyncMock()
+        mock_commands = tuple(
+            CommandDef(name=cmd.name, handler=mock_handler) if cmd.name == "subscribe" else cmd
+            for cmd in COMMANDS
+        )
 
         with (
-            patch("terok_dbus._cli.create_notifier", new_callable=AsyncMock) as mock_create,
-            patch("terok_dbus._cli.EventSubscriber", return_value=mock_subscriber) as mock_cls,
-            patch("terok_dbus._cli.asyncio.Event") as mock_event_cls,
+            patch("terok_dbus._cli.COMMANDS", mock_commands),
             patch("sys.argv", ["terok-dbus", "subscribe"]),
         ):
-            mock_create.return_value = mock_notifier
-            # Make the stop event resolve immediately
-            mock_event = MagicMock()
-            mock_event.wait = AsyncMock()
-            mock_event.set = MagicMock()
-            mock_event_cls.return_value = mock_event
-
             main()
-
-            mock_create.assert_awaited_once()
-            mock_cls.assert_called_once_with(mock_notifier)
-            mock_subscriber.start.assert_awaited_once()
-            mock_subscriber.stop.assert_awaited_once()
-            mock_notifier.disconnect.assert_awaited_once()
+            mock_handler.assert_awaited_once()

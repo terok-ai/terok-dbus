@@ -64,7 +64,12 @@ depends_on = [{ path = "terok_dbus._constants" }]
 path = "terok_dbus._subscriber"
 depends_on = [{ path = "terok_dbus._interfaces" }]
 
+# Command registry (consumed by CLI and terok integration layer)
+[[modules]]
+path = "terok_dbus._registry"
+depends_on = []
+
 # CLI entry point
 [[modules]]
 path = "terok_dbus._cli"
-depends_on = [{ path = "terok_dbus" }]
+depends_on = [{ path = "terok_dbus._registry" }]
