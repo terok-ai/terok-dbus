@@ -32,6 +32,7 @@ class _TerminalClearance:
         """Initialise pending state."""
         self._pending: dict[int, Notification] = {}
         self._notifier = CallbackNotifier(on_notify=self._on_notify)
+        self._stop: asyncio.Event | None = None
 
     def _on_notify(self, notification: Notification) -> None:
         """Handle a notification from the EventSubscriber."""
@@ -66,7 +67,9 @@ class _TerminalClearance:
         cmd = parts[0].lower()
 
         if cmd in ("q", "quit", "exit"):
-            raise KeyboardInterrupt
+            if self._stop:
+                self._stop.set()
+            return
 
         if cmd in ("l", "list"):
             self._show_pending()
@@ -117,28 +120,28 @@ class _TerminalClearance:
         print("Shield clearance — listening on session bus")  # noqa: T201
         print("Commands: a <N> allow, d <N> deny, l list, q quit\n")  # noqa: T201
 
-        stop = asyncio.Event()
+        self._stop = asyncio.Event()
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, stop.set)
+            loop.add_signal_handler(sig, self._stop.set)
 
         # Read stdin in a thread so we don't block the event loop
-        reader = asyncio.create_task(self._read_stdin(loop, stop))
-        await stop.wait()
+        reader = asyncio.create_task(self._read_stdin(loop))
+        await self._stop.wait()
         reader.cancel()
         await subscriber.stop()
         await self._notifier.disconnect()
 
-    async def _read_stdin(self, loop: asyncio.AbstractEventLoop, stop: asyncio.Event) -> None:
+    async def _read_stdin(self, loop: asyncio.AbstractEventLoop) -> None:
         """Read lines from stdin in a thread executor."""
-        while not stop.is_set():
+        while not self._stop.is_set():
             try:
                 line = await loop.run_in_executor(None, sys.stdin.readline)
             except (EOFError, OSError):
-                stop.set()
+                self._stop.set()
                 break
             if not line:  # EOF
-                stop.set()
+                self._stop.set()
                 break
             self._handle_input(line)
 
