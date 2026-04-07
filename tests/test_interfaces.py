@@ -11,6 +11,7 @@ from terok_dbus._interfaces import (
     CLEARANCE_OBJECT_PATH,
     CLEARANCE_XML,
     SHIELD_BUS_NAME,
+    SHIELD_BUS_NAME_PREFIX,
     SHIELD_INTERFACE_NAME,
     SHIELD_OBJECT_PATH,
     SHIELD_XML,
@@ -28,6 +29,11 @@ class TestShieldConstants:
 
     def test_interface_name(self):
         assert SHIELD_INTERFACE_NAME == "org.terok.Shield1"
+
+    def test_bus_name_prefix(self):
+        """Per-container MPRIS-style bus name prefix."""
+        assert SHIELD_BUS_NAME_PREFIX == "org.terok.Shield1.Container_"
+        assert SHIELD_BUS_NAME_PREFIX.startswith("org.terok.Shield")
 
 
 class TestClearanceConstants:

@@ -15,7 +15,7 @@ from terok_dbus._interfaces import (
     CLEARANCE_BUS_NAME,
     CLEARANCE_INTERFACE_NAME,
     CLEARANCE_OBJECT_PATH,
-    SHIELD_BUS_NAME,
+    SHIELD_BUS_NAME_PREFIX,
     SHIELD_INTERFACE_NAME,
     SHIELD_OBJECT_PATH,
 )
@@ -112,13 +112,16 @@ class MockClearance1(ServiceInterface):
 # ── Fixtures ──────────────────────────────────────────────────────────
 
 
+_TEST_SHIELD_BUS_NAME = f"{SHIELD_BUS_NAME_PREFIX}test123"
+
+
 @pytest.fixture
 async def shield_service(dbusmock_session) -> AsyncIterator[MockShield1]:
-    """Export a MockShield1 service on the private test bus."""
+    """Export a MockShield1 service on the private test bus (per-container name)."""
     bus = await MessageBus().connect()
     svc = MockShield1()
     bus.export(SHIELD_OBJECT_PATH, svc)
-    await bus.request_name(SHIELD_BUS_NAME)
+    await bus.request_name(_TEST_SHIELD_BUS_NAME)
     yield svc
     bus.disconnect()
 

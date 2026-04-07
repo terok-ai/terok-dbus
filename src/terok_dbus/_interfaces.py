@@ -14,6 +14,9 @@ the remote service.
 SHIELD_BUS_NAME = "org.terok.Shield"
 """Well-known bus name for the shield D-Bus bridge."""
 
+SHIELD_BUS_NAME_PREFIX = "org.terok.Shield1.Container_"
+"""Per-container bus name prefix used by individual shield bridges (MPRIS-style)."""
+
 SHIELD_OBJECT_PATH = "/org/terok/Shield"
 """Object path for the Shield1 interface."""
 
