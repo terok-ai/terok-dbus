@@ -67,8 +67,8 @@ class TestShieldXml:
             ("domain", "s"),
         ]
 
-    def test_verdict_method_takes_container(self) -> None:
-        """Verdict carries container as first arg so the hub can route by container."""
+    def test_verdict_method_carries_container_request_id_dest_action(self) -> None:
+        """Verdict's args let the hub apply the verdict without re-parsing request_id."""
         iface = Node.parse(SHIELD_XML).interfaces[0]
         methods = {m.name: m for m in iface.methods}
         assert "Verdict" in methods
@@ -76,6 +76,7 @@ class TestShieldXml:
         assert [(a.name, a.signature) for a in m.in_args] == [
             ("container", "s"),
             ("request_id", "s"),
+            ("dest", "s"),
             ("action", "s"),
         ]
         assert [(a.name, a.signature) for a in m.out_args] == [("ok", "b")]

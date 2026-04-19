@@ -268,7 +268,8 @@ class EventSubscriber:
             notification_id=nid, container=container, request_id=request_id, dest=dest
         )
         await self._notifier.on_action(
-            nid, lambda action: self._dispatch(self._send_verdict(container, request_id, action))
+            nid,
+            lambda action: self._dispatch(self._send_verdict(container, request_id, dest, action)),
         )
 
     async def _handle_verdict_applied(
@@ -288,9 +289,9 @@ class EventSubscriber:
             timeout_ms=5000,
         )
 
-    async def _send_verdict(self, container: str, request_id: str, action: str) -> None:
+    async def _send_verdict(self, container: str, request_id: str, dest: str, action: str) -> None:
         """Call ``Verdict`` on the hub (``org.terok.Shield1`` well-known name)."""
-        _log.info("Sending verdict: %s / %s → %s", container, request_id, action)
+        _log.info("Sending verdict: %s / %s (%s) → %s", container, request_id, dest, action)
         try:
             await self._bus.call(
                 Message(
@@ -298,8 +299,8 @@ class EventSubscriber:
                     path=SHIELD_OBJECT_PATH,
                     interface=SHIELD_INTERFACE_NAME,
                     member="Verdict",
-                    signature="sss",
-                    body=[container, request_id, action],
+                    signature="ssss",
+                    body=[container, request_id, dest, action],
                 )
             )
         except Exception:
@@ -330,9 +331,7 @@ class EventSubscriber:
             nid, lambda action_key: self._dispatch(self._send_resolve(request_id, action_key))
         )
 
-    async def _handle_request_resolved(
-        self, request_id: str, action: str, ips: list[str]
-    ) -> None:
+    async def _handle_request_resolved(self, request_id: str, action: str, ips: list[str]) -> None:
         """Update the clearance notification in place with the resolution."""
         nid = self._nid_for_clearance_request(request_id)
         if nid is None:

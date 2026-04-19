@@ -53,6 +53,7 @@ SHIELD_XML = """\
     <method name="Verdict">
       <arg name="container"  type="s" direction="in"/>
       <arg name="request_id" type="s" direction="in"/>
+      <arg name="dest"       type="s" direction="in"/>
       <arg name="action"     type="s" direction="in"/>
       <arg name="ok"         type="b" direction="out"/>
     </method>

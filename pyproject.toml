@@ -94,6 +94,10 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["E402"]
 "tests/integration/test_subscriber_integration.py" = ["F821", "F722"]
+# dbus_fast ServiceInterface signature strings ("s", "b", "u") look like undefined
+# names to ruff; they are D-Bus type codes, not Python identifiers.  The quotes
+# must stay — PEP 563 stringifies them but dbus_fast reads the raw strings.
+"src/terok_dbus/_serve.py" = ["F821", "F722", "UP037"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["terok_dbus"]

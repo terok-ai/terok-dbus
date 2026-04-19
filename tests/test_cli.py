@@ -39,13 +39,13 @@ class TestNotifyParser:
         assert args.timeout == 3000
 
 
-class TestSubscribeParser:
-    """Argument parsing for the ``subscribe`` subcommand."""
+class TestServeParser:
+    """Argument parsing for the ``serve`` subcommand."""
 
-    def test_parses_with_no_args(self):
+    def test_parses_with_no_args(self) -> None:
         parser = _build_parser()
-        args = parser.parse_args(["subscribe"])
-        assert args.command == "subscribe"
+        args = parser.parse_args(["serve"])
+        assert args.command == "serve"
 
 
 class TestNoSubcommand:
@@ -94,19 +94,19 @@ class TestKeyboardInterrupt:
                 main()
 
 
-class TestSubscribeDispatch:
-    """Dispatch tests for ``terok-dbus subscribe``."""
+class TestServeDispatch:
+    """Dispatch tests for ``terok-dbus serve``."""
 
-    def test_subscribe_dispatches_to_handler(self):
+    def test_serve_dispatches_to_handler(self) -> None:
         mock_handler = AsyncMock()
         mock_commands = tuple(
-            CommandDef(name=cmd.name, handler=mock_handler) if cmd.name == "subscribe" else cmd
+            CommandDef(name=cmd.name, handler=mock_handler) if cmd.name == "serve" else cmd
             for cmd in COMMANDS
         )
 
         with (
             patch("terok_dbus._cli.COMMANDS", mock_commands),
-            patch("sys.argv", ["terok-dbus", "subscribe"]),
+            patch("sys.argv", ["terok-dbus", "serve"]),
         ):
             main()
             mock_handler.assert_awaited_once()

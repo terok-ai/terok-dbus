@@ -113,9 +113,7 @@ class TestShieldSignals:
     """ConnectionBlocked fires a notification; VerdictApplied updates it in place."""
 
     @pytest.mark.asyncio
-    async def test_connection_blocked_creates_notification(
-        self, mock_notifier: AsyncMock
-    ) -> None:
+    async def test_connection_blocked_creates_notification(self, mock_notifier: AsyncMock) -> None:
         bus = _mock_bus()
         sub = EventSubscriber(mock_notifier, bus=bus)
         sub._bus = bus
@@ -142,9 +140,7 @@ class TestShieldSignals:
         assert _REQUEST_ID not in sub._pending
 
     @pytest.mark.asyncio
-    async def test_container_started_signal_is_logged_no_op(
-        self, mock_notifier: AsyncMock
-    ) -> None:
+    async def test_container_started_signal_is_logged_no_op(self, mock_notifier: AsyncMock) -> None:
         bus = _mock_bus()
         sub = EventSubscriber(mock_notifier, bus=bus)
         started = Message(
@@ -183,12 +179,12 @@ class TestSendVerdict:
         bus = _mock_bus()
         sub = EventSubscriber(mock_notifier, bus=bus)
         sub._bus = bus
-        await sub._send_verdict(CONTAINER, _REQUEST_ID, "allow")
+        await sub._send_verdict(CONTAINER, _REQUEST_ID, DEST_IP, "allow")
         assert bus.call.await_count == 1
         msg = bus.call.await_args[0][0]
         assert msg.destination == SHIELD_BUS_NAME
         assert msg.member == "Verdict"
-        assert msg.body == [CONTAINER, _REQUEST_ID, "allow"]
+        assert msg.body == [CONTAINER, _REQUEST_ID, DEST_IP, "allow"]
 
     @pytest.mark.asyncio
     async def test_action_callback_is_wired_on_block(self, mock_notifier: AsyncMock) -> None:
@@ -205,7 +201,7 @@ class TestSendVerdict:
         assert bus.call.await_count >= 1
         msg = bus.call.await_args[0][0]
         assert msg.member == "Verdict"
-        assert msg.body == [CONTAINER, _REQUEST_ID, "allow"]
+        assert msg.body == [CONTAINER, _REQUEST_ID, DEST_IP, "allow"]
 
 
 # ── Clearance1 routing (legacy path) ──────────────────────────────────

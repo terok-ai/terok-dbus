@@ -62,32 +62,12 @@ async def _handle_notify(*, summary: str, body: str = "", timeout: int = -1) -> 
         await notifier.disconnect()
 
 
-async def _handle_subscribe() -> None:
-    """Run the event subscriber until interrupted."""
-    import asyncio
-    import logging
-    import signal
+async def _handle_serve() -> None:
+    """Run the Shield1 hub service until SIGINT/SIGTERM."""
+    from terok_dbus._serve import _configure_logging, serve  # tach-ignore
 
-    from terok_dbus import EventSubscriber, create_notifier  # tach-ignore
-
-    logging.basicConfig(
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        level=logging.INFO,
-    )
-    notifier = await create_notifier()
-    try:
-        subscriber = EventSubscriber(notifier)
-        try:
-            await subscriber.start()
-            stop = asyncio.Event()
-            loop = asyncio.get_running_loop()
-            for sig in (signal.SIGINT, signal.SIGTERM):
-                loop.add_signal_handler(sig, stop.set)
-            await stop.wait()
-        finally:
-            await subscriber.stop()
-    finally:
-        await notifier.disconnect()
+    _configure_logging()
+    await serve()
 
 
 # ── Clearance handler ────────────────────────────────────
@@ -120,9 +100,9 @@ COMMANDS: tuple[CommandDef, ...] = (
         ),
     ),
     CommandDef(
-        name="subscribe",
-        help="Bridge Shield1/Clearance1 D-Bus signals to desktop notifications",
-        handler=_handle_subscribe,
+        name="serve",
+        help="Run the Shield1 clearance hub (owns org.terok.Shield1, forwards to desktop)",
+        handler=_handle_serve,
     ),
     CommandDef(
         name="clearance",
