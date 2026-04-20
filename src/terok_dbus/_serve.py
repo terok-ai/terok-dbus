@@ -37,6 +37,17 @@ from terok_dbus._subscriber import EventSubscriber
 
 _log = logging.getLogger(__name__)
 
+#: Seconds before ``_desktop_notifier`` gives up on the freedesktop
+#: Notifications connect and falls through to the null notifier.  A live
+#: session answers in tens of milliseconds; anything slower than this is a
+#: host-health signal, not normal behaviour.
+_NOTIFIER_CONNECT_TIMEOUT_S = 2.0
+
+#: Seconds granted to each individual cleanup step in the shutdown finally
+#: block (ingester stop, subscriber stop, notifier disconnect).  Prevents
+#: one hung bus call from burning systemd's stop-sigterm deadline.
+_CLEANUP_STEP_TIMEOUT_S = 2.0
+
 
 async def serve() -> None:
     """Run the hub service until SIGINT/SIGTERM.
@@ -94,9 +105,14 @@ async def _cleanup_with_timeout(
     ):
         name, awaitable = step
         try:
-            await asyncio.wait_for(awaitable, timeout=2.0)
+            await asyncio.wait_for(awaitable, timeout=_CLEANUP_STEP_TIMEOUT_S)
         except (TimeoutError, Exception) as exc:  # noqa: BLE001
-            _log.warning("hub shutdown: %s did not finish cleanly (%s)", name, exc)
+            _log.warning(
+                "hub shutdown: %s did not finish within %gs (%s)",
+                name,
+                _CLEANUP_STEP_TIMEOUT_S,
+                exc,
+            )
     with contextlib.suppress(Exception):
         bus.disconnect()
 
@@ -267,11 +283,12 @@ async def _desktop_notifier() -> Notifier:
     """
     notifier = DbusNotifier("terok-shield")
     try:
-        await asyncio.wait_for(notifier._connect(), timeout=2.0)
+        await asyncio.wait_for(notifier._connect(), timeout=_NOTIFIER_CONNECT_TIMEOUT_S)
     except TimeoutError:
         _log.warning(
-            "freedesktop Notifications timed out after 2s — desktop UI skipped, "
-            "investigate dbus-daemon / notification daemon health"
+            "freedesktop Notifications timed out after %gs — desktop UI skipped, "
+            "investigate dbus-daemon / notification daemon health",
+            _NOTIFIER_CONNECT_TIMEOUT_S,
         )
         return NullNotifier()
     except Exception as exc:  # noqa: BLE001
