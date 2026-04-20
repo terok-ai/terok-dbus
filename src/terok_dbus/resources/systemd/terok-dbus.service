@@ -30,30 +30,34 @@ Type=simple
 ExecStart={{BIN}} serve
 Restart=on-failure
 RestartSec=5
-# No filesystem or namespace hardening here on purpose.  The hub exists
-# to apply verdicts by shelling out to `terok-shield`, which in turn
-# runs `podman unshare nsenter nft ...`.  Rootless podman re-execs
-# itself to attach the pre-existing user namespace (pause process under
-# $XDG_RUNTIME_DIR/libpod/), and that re-exec breaks under the typical
-# "nice" unit-file knobs — PrivateTmp, ProtectHome=read-only,
-# ProtectSystem=full, NoNewPrivileges, PrivateDevices all variously
-# mangle the mount or capability view enough that podman fails with
-# "cannot re-exec process to join the existing user namespace".
+# No filesystem, namespace, or syscall hardening directives here, on
+# purpose.  The hub exists to apply verdicts by shelling out to
+# `terok-shield`, which in turn drives `podman unshare nsenter nft ...`.
+# Several unit-file knobs that *seem* safe for a user service clash
+# with that call path:
+#
+#   * `PrivateTmp`, `ProtectHome=read-only`, `ProtectSystem=full`,
+#     `PrivateDevices` — mangle the mount / capability view enough
+#     that rootless podman's re-exec-into-NS_ROOTLESS fails with
+#     "cannot re-exec process to join the existing user namespace".
+#
+#   * `RestrictAddressFamilies`, `SystemCallFilter`, and similar
+#     seccomp-based restrictions — the kernel refuses to install a
+#     seccomp filter on an unprivileged process unless `no_new_privs`
+#     is set (see `seccomp(2)`).  So even `NoNewPrivileges=no` can't
+#     win: systemd has to enable NNP anyway to make the filter
+#     load, and NNP in turn makes SELinux refuse the
+#     `unconfined_t → container_runtime_t` transition that
+#     `podman unshare` triggers.  Every verdict click then fails with
+#     an `nnp_transition` AVC on SELinux-enforcing hosts (Fedora's
+#     default).
+#
 # The hub runs as the operator's own uid with no privilege escalation
-# over what their shell already has, and every verdict it applies
-# still routes through the auditable terok-shield CLI, so the extra
-# directives were hardening against a threat model the hub doesn't
-# have.  Keep this empty until there's a documented win for a specific
-# directive that *doesn't* break podman.
-RestrictAddressFamilies=AF_UNIX
-# RestrictAddressFamilies implicitly sets NoNewPrivileges=yes (systemd.exec(5)
-# lists it alongside ProtectSystem, ProtectHome, PrivateDevices, etc. as
-# directives that imply NNP).  With NNP on, SELinux refuses the
-# unconfined_t → container_runtime_t transition that `podman unshare`
-# triggers, so verdict-apply fails with an `nnp_transition` AVC.  We want
-# the AF_UNIX restriction but NOT NNP, so override the implication
-# explicitly.
-NoNewPrivileges=no
+# over what their shell already has, and verdicts route through the
+# auditable `terok-shield allow|deny` CLI — so the directives were
+# hardening against a threat model the hub doesn't have.  Keep this
+# section empty until there's a documented win for a specific
+# directive that *doesn't* clash with rootless podman.
 
 [Install]
 WantedBy=default.target
