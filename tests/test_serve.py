@@ -139,6 +139,97 @@ class TestRunShieldCli:
         proc.kill.assert_called_once()
 
 
+class TestMakeEventSink:
+    """The sink factory dispatches ingester JSON events onto hub signal methods."""
+
+    @pytest.mark.asyncio
+    async def test_pending_calls_connection_blocked(self) -> None:
+        hub = MagicMock()
+        sink = _serve._make_event_sink(hub)
+        await sink(
+            {
+                "type": "pending",
+                "container": "c1",
+                "id": "c1:1",
+                "dest": "10.0.0.5",
+                "port": "443",
+                "proto": "6",
+                "domain": "example.com",
+            }
+        )
+        hub.ConnectionBlocked.assert_called_once_with(
+            "c1", "c1:1", "10.0.0.5", 443, 6, "example.com"
+        )
+
+    @pytest.mark.asyncio
+    async def test_container_started_calls_hub(self) -> None:
+        hub = MagicMock()
+        sink = _serve._make_event_sink(hub)
+        await sink({"type": "container_started", "container": "c1"})
+        hub.ContainerStarted.assert_called_once_with("c1")
+
+    @pytest.mark.asyncio
+    async def test_container_exited_carries_reason(self) -> None:
+        hub = MagicMock()
+        sink = _serve._make_event_sink(hub)
+        await sink({"type": "container_exited", "container": "c1", "reason": "poststop"})
+        hub.ContainerExited.assert_called_once_with("c1", "poststop")
+
+    @pytest.mark.asyncio
+    async def test_missing_domain_defaults_to_empty_string(self) -> None:
+        hub = MagicMock()
+        sink = _serve._make_event_sink(hub)
+        await sink(
+            {
+                "type": "pending",
+                "container": "c1",
+                "id": "c1:1",
+                "dest": "10.0.0.5",
+                "port": 443,
+                "proto": 6,
+            }
+        )
+        hub.ConnectionBlocked.assert_called_once_with("c1", "c1:1", "10.0.0.5", 443, 6, "")
+
+    @pytest.mark.asyncio
+    async def test_unknown_type_is_silent_noop(self) -> None:
+        hub = MagicMock()
+        sink = _serve._make_event_sink(hub)
+        await sink({"type": "whatever", "payload": 1})
+        hub.ConnectionBlocked.assert_not_called()
+        hub.ContainerStarted.assert_not_called()
+        hub.ContainerExited.assert_not_called()
+
+
+class TestCleanupWithTimeout:
+    """``_cleanup_with_timeout`` runs each stop step under a bounded timeout."""
+
+    @pytest.mark.asyncio
+    async def test_all_steps_finish_cleanly(self) -> None:
+        ingester = MagicMock()
+        subscriber = MagicMock()
+        notifier = MagicMock()
+        bus = MagicMock()
+        ingester.stop = AsyncMock()
+        subscriber.stop = AsyncMock()
+        notifier.disconnect = AsyncMock()
+        await _serve._cleanup_with_timeout(ingester, subscriber, notifier, bus)
+        bus.disconnect.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_hung_step_is_bounded_and_next_step_still_runs(self) -> None:
+        ingester = MagicMock()
+        subscriber = MagicMock()
+        notifier = MagicMock()
+        bus = MagicMock()
+        ingester.stop = AsyncMock(side_effect=TimeoutError)
+        subscriber.stop = AsyncMock()
+        notifier.disconnect = AsyncMock()
+        with patch("asyncio.wait_for", AsyncMock(side_effect=[TimeoutError, None, None])):
+            await _serve._cleanup_with_timeout(ingester, subscriber, notifier, bus)
+        bus.disconnect.assert_called_once()
+
+
 class TestDesktopNotifier:
     """The hub prefers a real D-Bus notifier; falls back to null on headless hosts."""
 

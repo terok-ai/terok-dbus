@@ -56,7 +56,7 @@ _CLEANUP_STEP_TIMEOUT_S = 2.0
 _SHIELD_CLI_TIMEOUT_S = 10.0
 
 
-async def serve() -> None:
+async def serve() -> None:  # pragma: no cover — integration path, real session bus
     """Run the hub service until SIGINT/SIGTERM.
 
     The hub owns ``org.terok.Shield1`` on the session bus and exposes the
@@ -64,6 +64,13 @@ async def serve() -> None:
     container-emitted ``ConnectionBlocked`` signals surface as desktop
     notifications — the subscriber's verdict callbacks round-trip through
     the bus and land in this same process's ``Verdict`` handler.
+
+    No-cover because the happy path requires a real session bus and a
+    live Notifications daemon.  The per-step helpers
+    (``_make_event_sink``, ``_cleanup_with_timeout``, ``_desktop_notifier``)
+    are covered individually; an ``TestServeRequestName`` test covers the
+    one error path (non-PRIMARY-OWNER) with a mocked bus to lock in
+    fail-fast on name collisions.
     """
     bus = await MessageBus(bus_type=BusType.SESSION).connect()
 
@@ -338,7 +345,7 @@ async def _desktop_notifier() -> Notifier:
 # ── Shutdown plumbing ────────────────────────────────────────────────
 
 
-async def _wait_for_shutdown_signal() -> None:
+async def _wait_for_shutdown_signal() -> None:  # pragma: no cover — real signal delivery
     """Block until SIGINT/SIGTERM arrives so systemd can stop the unit cleanly."""
     import signal as signalmod
 
