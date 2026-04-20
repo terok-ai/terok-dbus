@@ -175,9 +175,9 @@ async def _run_shield_cli(container: str, dest: str, action: str) -> bool:
     if not dest:
         _log.warning("Verdict missing dest — nothing to apply")
         return False
-    shield_bin = shutil.which("terok-shield")
+    shield_bin = _find_shield_binary()
     if not shield_bin:
-        _log.error("terok-shield not on PATH — cannot apply verdict")
+        _log.error("terok-shield not found (neither in venv bin nor on PATH)")
         return False
     proc = await asyncio.create_subprocess_exec(
         shield_bin,
@@ -192,6 +192,25 @@ async def _run_shield_cli(container: str, dest: str, action: str) -> bool:
     if returncode != 0:
         _log.warning("shield %s failed: %s", action, stderr.decode(errors="replace").strip())
     return returncode == 0
+
+
+def _find_shield_binary() -> str | None:
+    """Locate the ``terok-shield`` entry point the hub should shell out to.
+
+    systemd user units inherit a minimal ``PATH`` (``/usr/local/bin:/usr/bin:/bin``),
+    which normally excludes the user's ``~/.local/bin`` and any pipx venv's
+    ``bin/``.  Look for a sibling launcher in the same venv as this hub
+    process first — pipx installs all of terok's entry points side-by-side,
+    so if we were installed that way, ``terok-shield`` is right next to
+    our own executable.  Fall through to ``shutil.which`` for dev installs
+    where ``PATH`` is curated.
+    """
+    from pathlib import Path
+
+    sibling = Path(sys.executable).parent / "terok-shield"
+    if sibling.is_file():
+        return str(sibling)
+    return shutil.which("terok-shield")
 
 
 # ── Notifier selection ───────────────────────────────────────────────
