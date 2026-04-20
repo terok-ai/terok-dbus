@@ -14,6 +14,7 @@ as desktop notifications through the same D-Bus session.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import shutil
 import sys
@@ -66,9 +67,37 @@ async def serve() -> None:
     try:
         await _wait_for_shutdown_signal()
     finally:
-        await ingester.stop()
-        await subscriber.stop()
-        await notifier.disconnect()
+        await _cleanup_with_timeout(ingester, subscriber, notifier, bus)
+
+
+async def _cleanup_with_timeout(
+    ingester: EventIngester,
+    subscriber: EventSubscriber,
+    notifier: Notifier,
+    bus: MessageBus,
+) -> None:
+    """Run each cleanup step under a short timeout so SIGTERM always exits cleanly.
+
+    Individual steps can hang on a flaky session bus (a freedesktop
+    Notifications daemon that stops responding mid-teardown, a subscriber
+    signal-match removal that waits forever for an ack).  Without a cap,
+    systemd waits out its stop-sigterm deadline and has to escalate to
+    SIGABRT — that's how ``terok setup`` ends up spending 40+ seconds on
+    the hub restart.  Five seconds per step is plenty for a healthy bus,
+    and if we hit the cap the OS kills us which is fine because the
+    process is exiting anyway.
+    """
+    for step in (
+        ("ingester", ingester.stop()),
+        ("subscriber", subscriber.stop()),
+        ("notifier", notifier.disconnect()),
+    ):
+        name, awaitable = step
+        try:
+            await asyncio.wait_for(awaitable, timeout=2.0)
+        except (TimeoutError, Exception) as exc:  # noqa: BLE001
+            _log.warning("hub shutdown: %s did not finish cleanly (%s)", name, exc)
+    with contextlib.suppress(Exception):
         bus.disconnect()
 
 
@@ -217,11 +246,22 @@ def _find_shield_binary() -> str | None:
 
 
 async def _desktop_notifier() -> Notifier:
-    """Prefer a real D-Bus notifier; fall through to null on headless hosts."""
+    """Prefer a real D-Bus notifier; fall through to null on headless / slow hosts.
+
+    Bound the connect attempt so the hub's startup doesn't block for tens of
+    seconds when the freedesktop Notifications service is slow to respond
+    (headless boxes, a desktop coming up, a dbus-daemon under load).
+    ``terok setup`` runs ``systemctl --user restart terok-dbus`` and waits
+    for the service to start — the systemd default stop-timeout is short
+    and unforgiving, so a slow notifier startup cascades into the whole
+    setup feeling stuck.  Two seconds is plenty on a live session, and the
+    ``NullNotifier`` fallback keeps verdict dispatch working end-to-end
+    even when desktop UI isn't available.
+    """
     notifier = DbusNotifier("terok-shield")
     try:
-        await notifier._connect()
-    except Exception as exc:  # noqa: BLE001
+        await asyncio.wait_for(notifier._connect(), timeout=2.0)
+    except (TimeoutError, Exception) as exc:  # noqa: BLE001
         _log.info("freedesktop Notifications unavailable (%s) — skipping desktop UI", exc)
         return NullNotifier()
     return notifier

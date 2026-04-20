@@ -47,6 +47,13 @@ _HINT_RESOLVED: dict[str, Any] = {
 }
 """Hints for resolved notifications: normal urgency."""
 
+_HINT_VERDICT_FAILED: dict[str, Any] = {
+    "urgency": Variant("y", 2),
+}
+"""Hints for verdict-application failures: critical urgency so the operator
+doesn't scroll past a 'nothing actually happened' notification with the
+same styling as a successful apply."""
+
 _PROTO_NAMES: dict[int, str] = {6: "TCP", 17: "UDP"}
 
 # ── D-Bus daemon constants ────────────────────────────────────────────
@@ -298,17 +305,30 @@ class EventSubscriber:
     async def _handle_verdict_applied(
         self, container: str, request_id: str, action: str, ok: bool
     ) -> None:
-        """Replace the notification in place with the verdict outcome."""
+        """Replace the notification in place with the verdict outcome.
+
+        On failure, change both the verb and the urgency: the old code said
+        "Allowed: X (failed)" with normal-urgency styling, which reads as a
+        success to everyone not pausing to parse the parenthetical — and
+        showed up green in the clearance TUI.  Use "Allow failed" /
+        "Deny failed" so the subject line reflects what actually happened,
+        and bump the hint to critical so the desktop renders it as a warning.
+        """
         pending = self._pending.pop(request_id, None)
         if pending is None:
             return
-        status = "Allowed" if action == "allow" else "Denied"
-        suffix = "" if ok else " (failed)"
+        verb = "Allow" if action == "allow" else "Deny"
+        if ok:
+            title = f"{verb}ed: {pending.dest}"
+            hints = _HINT_RESOLVED
+        else:
+            title = f"{verb} failed: {pending.dest}"
+            hints = _HINT_VERDICT_FAILED
         await self._notifier.notify(
-            f"{status}: {pending.dest}{suffix}",
+            title,
             f"Container: {container}",
             replaces_id=pending.notification_id,
-            hints=_HINT_RESOLVED,
+            hints=hints,
             timeout_ms=5000,
         )
 

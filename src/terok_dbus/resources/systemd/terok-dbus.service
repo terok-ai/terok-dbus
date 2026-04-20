@@ -30,20 +30,21 @@ Type=simple
 ExecStart={{BIN}} serve
 Restart=on-failure
 RestartSec=5
-# Intentionally no NoNewPrivileges=yes: the hub applies verdicts by shelling
-# out to `terok-shield allow|deny`, which in turn drives `podman unshare`
-# and `nsenter`.  On SELinux-enforcing systems (Fedora / RHEL defaults),
-# those execs transition into `container_runtime_t` / `nsenter_t`, and
-# SELinux refuses the nnp_transition when NoNewPrivileges is set — the
-# verdict call fails silently with SELinux logging an AVC denial.
-PrivateTmp=yes
-ProtectSystem=full
-ProtectHome=read-only
-# ProtectHome=read-only locks down /run/user/$UID too; the event ingester
-# needs to create and unlink its unix socket there, so whitelist it.  %t
-# expands to $XDG_RUNTIME_DIR for user units.
-ReadWritePaths=%t
-PrivateDevices=yes
+# No filesystem or namespace hardening here on purpose.  The hub exists
+# to apply verdicts by shelling out to `terok-shield`, which in turn
+# runs `podman unshare nsenter nft ...`.  Rootless podman re-execs
+# itself to attach the pre-existing user namespace (pause process under
+# $XDG_RUNTIME_DIR/libpod/), and that re-exec breaks under the typical
+# "nice" unit-file knobs — PrivateTmp, ProtectHome=read-only,
+# ProtectSystem=full, NoNewPrivileges, PrivateDevices all variously
+# mangle the mount or capability view enough that podman fails with
+# "cannot re-exec process to join the existing user namespace".
+# The hub runs as the operator's own uid with no privilege escalation
+# over what their shell already has, and every verdict it applies
+# still routes through the auditable terok-shield CLI, so the extra
+# directives were hardening against a threat model the hub doesn't
+# have.  Keep this empty until there's a documented win for a specific
+# directive that *doesn't* break podman.
 RestrictAddressFamilies=AF_UNIX
 
 [Install]
