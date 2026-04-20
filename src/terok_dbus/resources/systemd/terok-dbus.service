@@ -34,6 +34,10 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=full
 ProtectHome=read-only
+# ProtectHome=read-only locks down /run/user/$UID too; the event ingester
+# needs to create and unlink its unix socket there, so whitelist it.  %t
+# expands to $XDG_RUNTIME_DIR for user units.
+ReadWritePaths=%t
 PrivateDevices=yes
 RestrictAddressFamilies=AF_UNIX
 
