@@ -26,7 +26,6 @@ class TestPublicApi:
             "CLEARANCE_OBJECT_PATH",
             "CLEARANCE_XML",
             "SHIELD_BUS_NAME",
-            "SHIELD_BUS_NAME_PREFIX",
             "SHIELD_INTERFACE_NAME",
             "SHIELD_OBJECT_PATH",
             "SHIELD_XML",

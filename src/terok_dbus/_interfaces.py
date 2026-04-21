@@ -4,20 +4,23 @@
 """D-Bus interface definitions for terok Shield1 and Clearance1.
 
 Canonical bus names, object paths, interface names, and introspection XML
-for the terok D-Bus contracts. The XML strings allow proxy creation via
-``dbus_fast.introspection.Node.parse()`` without runtime introspection of
-the remote service.
+for the terok D-Bus contracts.  The XML strings allow proxy creation via
+``dbus_fast.introspection.Node.parse()`` without runtime introspection
+of the remote service.
 """
 
 # ── Shield1 ────────────────────────────────────────────────────────────
 
-SHIELD_BUS_NAME = "org.terok.Shield"
-"""Well-known bus name for the shield D-Bus bridge."""
+SHIELD_BUS_NAME = "org.terok.Shield1"
+"""Well-known bus name for the single host-side clearance hub.
 
-SHIELD_BUS_NAME_PREFIX = "org.terok.Shield1.Container_"
-"""Per-container bus name prefix used by individual shield bridges (MPRIS-style)."""
+Owned by ``terok-dbus serve``.  Per-container NFLOG readers (spawned by
+the shield OCI bridge hook) publish signals on this interface without
+claiming the name — only the hub owns it, so only the hub dispatches
+the ``Verdict`` method.
+"""
 
-SHIELD_OBJECT_PATH = "/org/terok/Shield"
+SHIELD_OBJECT_PATH = "/org/terok/Shield1"
 """Object path for the Shield1 interface."""
 
 SHIELD_INTERFACE_NAME = "org.terok.Shield1"
@@ -27,25 +30,33 @@ SHIELD_XML = """\
 <node>
   <interface name="org.terok.Shield1">
     <signal name="ConnectionBlocked">
-      <arg type="s" name="container" direction="out"/>
-      <arg type="s" name="dest" direction="out"/>
-      <arg type="q" name="port" direction="out"/>
-      <arg type="q" name="proto" direction="out"/>
-      <arg type="s" name="domain" direction="out"/>
-      <arg type="s" name="request_id" direction="out"/>
+      <arg name="container"  type="s"/>
+      <arg name="request_id" type="s"/>
+      <arg name="dest"       type="s"/>
+      <arg name="port"       type="u"/>
+      <arg name="proto"      type="u"/>
+      <arg name="domain"     type="s"/>
+    </signal>
+    <signal name="VerdictApplied">
+      <arg name="container"  type="s"/>
+      <arg name="request_id" type="s"/>
+      <arg name="action"     type="s"/>
+      <arg name="ok"         type="b"/>
+    </signal>
+    <signal name="ContainerStarted">
+      <arg name="container"  type="s"/>
+    </signal>
+    <signal name="ContainerExited">
+      <arg name="container"  type="s"/>
+      <arg name="reason"     type="s"/>
     </signal>
     <method name="Verdict">
-      <arg type="s" name="request_id" direction="in"/>
-      <arg type="s" name="action" direction="in"/>
-      <arg type="b" name="ok" direction="out"/>
+      <arg name="container"  type="s" direction="in"/>
+      <arg name="request_id" type="s" direction="in"/>
+      <arg name="dest"       type="s" direction="in"/>
+      <arg name="action"     type="s" direction="in"/>
+      <arg name="ok"         type="b" direction="out"/>
     </method>
-    <signal name="VerdictApplied">
-      <arg type="s" name="container" direction="out"/>
-      <arg type="s" name="dest" direction="out"/>
-      <arg type="s" name="request_id" direction="out"/>
-      <arg type="s" name="action" direction="out"/>
-      <arg type="b" name="ok" direction="out"/>
-    </signal>
   </interface>
 </node>"""
 """Introspection XML for ``org.terok.Shield1``."""

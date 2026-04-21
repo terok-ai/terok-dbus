@@ -39,13 +39,71 @@ class TestNotifyParser:
         assert args.timeout == 3000
 
 
-class TestSubscribeParser:
-    """Argument parsing for the ``subscribe`` subcommand."""
+class TestServeParser:
+    """Argument parsing for the ``serve`` subcommand."""
 
-    def test_parses_with_no_args(self):
+    def test_parses_with_no_args(self) -> None:
         parser = _build_parser()
-        args = parser.parse_args(["subscribe"])
-        assert args.command == "subscribe"
+        args = parser.parse_args(["serve"])
+        assert args.command == "serve"
+
+
+class TestInstallServiceParser:
+    """Argument parsing for the ``install-service`` subcommand."""
+
+    def test_parses_with_no_args(self) -> None:
+        parser = _build_parser()
+        args = parser.parse_args(["install-service"])
+        assert args.command == "install-service"
+        assert args.bin_path is None
+
+    def test_bin_path_flag(self) -> None:
+        parser = _build_parser()
+        args = parser.parse_args(["install-service", "--bin-path", "/opt/terok-dbus"])
+        assert args.bin_path == "/opt/terok-dbus"
+
+
+class TestInstallServiceDispatch:
+    """Dispatch tests for ``terok-dbus install-service``."""
+
+    def test_install_service_calls_install(self, tmp_path, monkeypatch) -> None:
+        """``install-service`` resolves BIN and writes the unit via ``install_service``."""
+        unit_path = tmp_path / "terok-dbus.service"
+
+        def _fake_install(bin_path):
+            unit_path.write_text(f"ExecStart={bin_path}\n")
+            return unit_path
+
+        monkeypatch.setattr("terok_dbus._install.install_service", _fake_install)
+        monkeypatch.setattr("shutil.which", lambda _name: "/opt/terok-dbus")
+        with patch("sys.argv", ["terok-dbus", "install-service"]):
+            main()
+        assert unit_path.read_text().startswith("ExecStart=/opt/terok-dbus")
+
+    def test_install_service_respects_explicit_bin_path(self, tmp_path, monkeypatch) -> None:
+        seen: dict[str, str] = {}
+
+        def _fake_install(bin_path):
+            seen["bin_path"] = str(bin_path)
+            return tmp_path / "terok-dbus.service"
+
+        monkeypatch.setattr("terok_dbus._install.install_service", _fake_install)
+        with patch("sys.argv", ["terok-dbus", "install-service", "--bin-path", "/custom/bin"]):
+            main()
+        assert seen["bin_path"] == "/custom/bin"
+
+    def test_install_service_rejects_empty_bin_path(self, monkeypatch) -> None:
+        """``--bin-path ''`` is operator error, not "discover it for me"."""
+
+        def _fake_install(bin_path):
+            raise AssertionError("install_service must not be called on empty --bin-path")
+
+        monkeypatch.setattr("terok_dbus._install.install_service", _fake_install)
+        with (
+            patch("sys.argv", ["terok-dbus", "install-service", "--bin-path", ""]),
+            pytest.raises(SystemExit),
+        ):
+            main()
 
 
 class TestNoSubcommand:
@@ -94,19 +152,19 @@ class TestKeyboardInterrupt:
                 main()
 
 
-class TestSubscribeDispatch:
-    """Dispatch tests for ``terok-dbus subscribe``."""
+class TestServeDispatch:
+    """Dispatch tests for ``terok-dbus serve``."""
 
-    def test_subscribe_dispatches_to_handler(self):
+    def test_serve_dispatches_to_handler(self) -> None:
         mock_handler = AsyncMock()
         mock_commands = tuple(
-            CommandDef(name=cmd.name, handler=mock_handler) if cmd.name == "subscribe" else cmd
+            CommandDef(name=cmd.name, handler=mock_handler) if cmd.name == "serve" else cmd
             for cmd in COMMANDS
         )
 
         with (
             patch("terok_dbus._cli.COMMANDS", mock_commands),
-            patch("sys.argv", ["terok-dbus", "subscribe"]),
+            patch("sys.argv", ["terok-dbus", "serve"]),
         ):
             main()
             mock_handler.assert_awaited_once()

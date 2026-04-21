@@ -31,22 +31,34 @@ class DbusNotifier:
         self._callbacks: dict[int, Callable[[str], None]] = {}
         self._connect_lock = asyncio.Lock()
 
-    async def _connect(self) -> None:
-        """Establish the session-bus connection and subscribe to signals."""
-        bus = await MessageBus().connect()
-        try:
-            introspection = await bus.introspect(BUS_NAME, OBJECT_PATH)
-            proxy = bus.get_proxy_object(BUS_NAME, OBJECT_PATH, introspection)
-            iface = proxy.get_interface(INTERFACE_NAME)
-            if hasattr(iface, "on_action_invoked"):
-                iface.on_action_invoked(self._handle_action)
-            if hasattr(iface, "on_notification_closed"):
-                iface.on_notification_closed(self._handle_closed)
-        except Exception:
-            bus.disconnect()
-            raise
-        self._bus = bus
-        self._interface = iface
+    async def connect(self) -> None:
+        """Idempotently open the session-bus connection and subscribe to signals.
+
+        Safe to call concurrently and repeatedly: the lock serialises racing
+        callers so exactly one MessageBus is ever created for this notifier.
+        """
+        if self._interface is not None:
+            return
+        async with self._connect_lock:
+            if self._interface is not None:
+                return
+            bus = await MessageBus().connect()
+            try:
+                introspection = await bus.introspect(BUS_NAME, OBJECT_PATH)
+                proxy = bus.get_proxy_object(BUS_NAME, OBJECT_PATH, introspection)
+                iface = proxy.get_interface(INTERFACE_NAME)
+                if hasattr(iface, "on_action_invoked"):
+                    iface.on_action_invoked(self._handle_action)
+                if hasattr(iface, "on_notification_closed"):
+                    iface.on_notification_closed(self._handle_closed)
+            except BaseException:
+                # Catch ``BaseException`` so an ``asyncio.CancelledError``
+                # (``BaseException`` subclass on 3.11+) mid-handshake doesn't
+                # leak the already-connected bus.
+                bus.disconnect()
+                raise
+            self._bus = bus
+            self._interface = iface
 
     def _handle_action(self, notification_id: int, action_key: str) -> None:
         """Dispatch an ``ActionInvoked`` signal to the registered callback."""
@@ -82,10 +94,7 @@ class DbusNotifier:
         Returns:
             Server-assigned notification ID.
         """
-        if self._interface is None:
-            async with self._connect_lock:
-                if self._interface is None:
-                    await self._connect()
+        await self.connect()
 
         actions_flat: list[str] = []
         for action_id, label in actions:
@@ -127,13 +136,13 @@ class DbusNotifier:
 
     async def disconnect(self) -> None:
         """Tear down the session-bus connection."""
-        if self._interface is not None:
-            if hasattr(self._interface, "off_action_invoked"):
-                self._interface.off_action_invoked(self._handle_action)
-            if hasattr(self._interface, "off_notification_closed"):
-                self._interface.off_notification_closed(self._handle_closed)
-        if self._bus is not None:
-            self._bus.disconnect()
+        if self._interface is None:
+            return
+        if hasattr(self._interface, "off_action_invoked"):
+            self._interface.off_action_invoked(self._handle_action)
+        if hasattr(self._interface, "off_notification_closed"):
+            self._interface.off_notification_closed(self._handle_closed)
+        self._bus.disconnect()  # type: ignore[union-attr]
         self._bus = None
         self._interface = None
         self._callbacks.clear()

@@ -14,7 +14,6 @@ from terok_dbus._interfaces import (
     CLEARANCE_OBJECT_PATH,
     CLEARANCE_XML,
     SHIELD_BUS_NAME,
-    SHIELD_BUS_NAME_PREFIX,
     SHIELD_INTERFACE_NAME,
     SHIELD_OBJECT_PATH,
     SHIELD_XML,
@@ -37,7 +36,6 @@ __all__ = [
     "CLEARANCE_OBJECT_PATH",
     "CLEARANCE_XML",
     "SHIELD_BUS_NAME",
-    "SHIELD_BUS_NAME_PREFIX",
     "SHIELD_INTERFACE_NAME",
     "SHIELD_OBJECT_PATH",
     "SHIELD_XML",
@@ -62,7 +60,7 @@ async def create_notifier(app_name: str = "terok") -> Notifier:
     """
     notifier = DbusNotifier(app_name)
     try:
-        await notifier._connect()
+        await notifier.connect()
     except (OSError, DBusError, ValueError) as exc:
         _log.debug("D-Bus session bus unavailable, falling back to NullNotifier: %s", exc)
         return NullNotifier()

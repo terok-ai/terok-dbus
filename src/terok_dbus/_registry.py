@@ -62,32 +62,40 @@ async def _handle_notify(*, summary: str, body: str = "", timeout: int = -1) -> 
         await notifier.disconnect()
 
 
-async def _handle_subscribe() -> None:
-    """Run the event subscriber until interrupted."""
-    import asyncio
-    import logging
-    import signal
+async def _handle_serve() -> None:
+    """Run the Shield1 hub service until SIGINT/SIGTERM."""
+    from terok_dbus._serve import _configure_logging, serve  # tach-ignore
 
-    from terok_dbus import EventSubscriber, create_notifier  # tach-ignore
+    _configure_logging()
+    await serve()
 
-    logging.basicConfig(
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        level=logging.INFO,
+
+async def _handle_install_service(*, bin_path: str | None = None) -> None:  # NOSONAR S7503
+    """Install the terok-dbus systemd user unit and reload the user daemon.
+
+    ``async`` is structural, not semantic: every CommandDef.handler goes
+    through ``asyncio.run(handler(**kwargs))`` in ``_cli.py``.  Sonar's
+    "async without await" rule is correct about the body but the shape
+    is required by the dispatcher contract — removing ``async`` breaks
+    every other handler's calling convention.
+    """
+    import shutil
+    import sys
+    from pathlib import Path as _Path
+
+    from terok_dbus._install import install_service  # tach-ignore
+
+    if bin_path is not None and not bin_path:
+        raise SystemExit("install-service: --bin-path cannot be empty")
+    discovered = bin_path or shutil.which("terok-dbus")
+    resolved: _Path | list[str] = (
+        _Path(discovered) if discovered is not None else [sys.executable, "-m", "terok_dbus._cli"]
     )
-    notifier = await create_notifier()
-    try:
-        subscriber = EventSubscriber(notifier)
-        try:
-            await subscriber.start()
-            stop = asyncio.Event()
-            loop = asyncio.get_running_loop()
-            for sig in (signal.SIGINT, signal.SIGTERM):
-                loop.add_signal_handler(sig, stop.set)
-            await stop.wait()
-        finally:
-            await subscriber.stop()
-    finally:
-        await notifier.disconnect()
+    dest = install_service(resolved)
+    print(f"Installed {dest}")  # noqa: T201
+    print(  # noqa: T201
+        "Enable with: systemctl --user enable --now terok-dbus"
+    )
 
 
 # ── Clearance handler ────────────────────────────────────
@@ -120,9 +128,21 @@ COMMANDS: tuple[CommandDef, ...] = (
         ),
     ),
     CommandDef(
-        name="subscribe",
-        help="Bridge Shield1/Clearance1 D-Bus signals to desktop notifications",
-        handler=_handle_subscribe,
+        name="serve",
+        help="Run the Shield1 clearance hub (owns org.terok.Shield1, forwards to desktop)",
+        handler=_handle_serve,
+    ),
+    CommandDef(
+        name="install-service",
+        help="Install the terok-dbus systemd user unit (systemctl --user daemon-reload'd)",
+        handler=_handle_install_service,
+        args=(
+            ArgDef(
+                name="--bin-path",
+                dest="bin_path",
+                help="Override the resolved terok-dbus launcher path",
+            ),
+        ),
     ),
     CommandDef(
         name="clearance",
