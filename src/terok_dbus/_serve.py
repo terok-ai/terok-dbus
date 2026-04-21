@@ -73,22 +73,8 @@ async def serve() -> None:  # pragma: no cover — integration path, real sessio
     fail-fast on name collisions.
     """
     bus = await MessageBus(bus_type=BusType.SESSION).connect()
-
     hub = ShieldHub()
-    bus.export(SHIELD_OBJECT_PATH, hub)
-    # Fail fast when a prior hub still owns the name.  Without this check
-    # the new process silently sits in the queue, exports the object, and
-    # runs its ingester/subscriber while every ``Verdict`` method call
-    # routes to the other owner — operators see a live service that never
-    # applies their clicks.
-    reply = await bus.request_name(SHIELD_BUS_NAME)
-    if reply is not RequestNameReply.PRIMARY_OWNER:
-        bus.disconnect()
-        raise RuntimeError(
-            f"could not claim {SHIELD_BUS_NAME}: reply={reply.name} — "
-            "is another terok-dbus instance already running?"
-        )
-    _log.info("Shield1 hub online (%s)", SHIELD_BUS_NAME)
+    await _claim_bus_name(bus, hub)
 
     notifier = await _desktop_notifier()
     subscriber = EventSubscriber(notifier, bus=bus)
@@ -104,6 +90,25 @@ async def serve() -> None:  # pragma: no cover — integration path, real sessio
         await _wait_for_shutdown_signal()
     finally:
         await _cleanup_with_timeout(ingester, subscriber, notifier, bus)
+
+
+async def _claim_bus_name(bus: MessageBus, hub: "ShieldHub") -> None:
+    """Export the hub and take primary ownership of ``org.terok.Shield1``.
+
+    A non-PRIMARY reply would leave the new process sitting in the queue
+    while every ``Verdict`` method call routes to the pre-existing owner —
+    operators see a live service that never applies their clicks.  Fail
+    fast so the stale hub is the one visible culprit.
+    """
+    bus.export(SHIELD_OBJECT_PATH, hub)
+    reply = await bus.request_name(SHIELD_BUS_NAME)
+    if reply is not RequestNameReply.PRIMARY_OWNER:
+        bus.disconnect()
+        raise RuntimeError(
+            f"could not claim {SHIELD_BUS_NAME}: reply={reply.name} — "
+            "is another terok-dbus instance already running?"
+        )
+    _log.info("Shield1 hub online (%s)", SHIELD_BUS_NAME)
 
 
 async def _cleanup_with_timeout(
@@ -131,7 +136,7 @@ async def _cleanup_with_timeout(
         name, awaitable = step
         try:
             await asyncio.wait_for(awaitable, timeout=_CLEANUP_STEP_TIMEOUT_S)
-        except (TimeoutError, Exception) as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — shutdown must continue past any step
             _log.warning(
                 "hub shutdown: %s did not finish within %gs (%s)",
                 name,

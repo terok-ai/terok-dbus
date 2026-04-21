@@ -259,10 +259,6 @@ class EventSubscriber:
             _log.debug("Ignoring Clearance1 signal from unknown sender %s", msg.sender)
             return
         if msg.member == "RequestReceived" and len(msg.body) == 6:
-            # Sender tracking happens in _on_name_owner_changed (keyed by bus
-            # name).  Previously this branch also stored `{request_id: sender}`
-            # here, which muddled the dict's key type and leaked an entry per
-            # request forever.  Rely on the bus-name mapping alone.
             self._dispatch(self._handle_request_received(*msg.body))
         elif msg.member == "RequestResolved" and len(msg.body) == 3:
             self._dispatch(self._handle_request_resolved(*msg.body))
