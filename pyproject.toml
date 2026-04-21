@@ -4,7 +4,7 @@ build-backend = "poetry_dynamic_versioning.backend"
 
 [tool.poetry]
 name = "terok-dbus"
-version = "0.5.10"
+version = "0.5.11"
 description = "D-Bus desktop notification package for terok"
 readme = "README.md"
 license = "Apache-2.0"
