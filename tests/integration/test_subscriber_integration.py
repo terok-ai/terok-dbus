@@ -176,7 +176,7 @@ class TestShieldSubscriberIntegration:
     async def test_action_routes_verdict_to_hub(
         self, shield_service: MockShield1, subscriber_bus: MessageBus
     ) -> None:
-        """Operator action routes Verdict(container, request_id, dest, action) to the hub."""
+        """Operator action routes ``Verdict(container, request_id, target, action)`` to the hub."""
         mock_notifier = AsyncMock()
         mock_notifier.notify = AsyncMock(return_value=1)
         mock_notifier.on_action = AsyncMock()
@@ -193,7 +193,7 @@ class TestShieldSubscriberIntegration:
         action_cb("allow")
         await asyncio.sleep(0.2)
 
-        assert (CONTAINER, "req-2", DEST_IP, "allow") in shield_service._verdict_log
+        assert (CONTAINER, "req-2", DOMAIN_ALT, "allow") in shield_service._verdict_log
         await sub.stop()
 
     async def test_verdict_applied_updates_notification(

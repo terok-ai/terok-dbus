@@ -162,7 +162,7 @@ class TestShieldSignals:
         await asyncio.sleep(0)
         mock_notifier.notify.assert_awaited_once()
         assert _REQUEST_ID in sub._pending
-        assert sub._pending[_REQUEST_ID].dest == DEST_IP
+        assert sub._pending[_REQUEST_ID].target == DOMAIN
 
     @pytest.mark.asyncio
     async def test_verdict_applied_updates_notification_in_place(
@@ -177,10 +177,11 @@ class TestShieldSignals:
         sub._on_message(_verdict_applied_signal(action="allow", ok=True))
         await asyncio.sleep(0)
         assert mock_notifier.notify.await_count == 2
-        second_call = mock_notifier.notify.await_args_list[1]
-        assert second_call.kwargs.get("replaces_id") == 42
-        assert second_call.kwargs["hints"] is _HINT_CONFIRMATION
-        assert second_call.kwargs["timeout_ms"] == -1
+        resolution = mock_notifier.notify.await_args_list[1]
+        assert resolution.kwargs.get("replaces_id") == 42
+        assert resolution.args[0] == f"Allowed: {DOMAIN}"
+        assert resolution.kwargs["hints"] is _HINT_CONFIRMATION
+        assert resolution.kwargs["timeout_ms"] == -1
         assert _REQUEST_ID not in sub._pending
 
     @pytest.mark.asyncio
@@ -300,15 +301,13 @@ class TestShieldSignals:
             notification_id=42,
             container=CONTAINER,
             request_id=_REQUEST_ID,
-            dest=DEST_IP,
-            dedup_key=DOMAIN,
+            target=DOMAIN,
         )
         sub._pending["other:1"] = _PendingBlock(
             notification_id=43,
             container="other",
             request_id="other:1",
-            dest=DEST_IP,
-            dedup_key=DOMAIN,
+            target=DOMAIN,
         )
         msg = Message(
             message_type=MessageType.SIGNAL,
@@ -586,7 +585,7 @@ class TestLiveBlockDedup:
             if m.member == "Verdict"
         ]
         assert len(verdict_msgs) == 1
-        assert verdict_msgs[0].body == [CONTAINER, second_rid, DEST_IP, "allow"]
+        assert verdict_msgs[0].body == [CONTAINER, second_rid, DOMAIN, "allow"]
 
     @pytest.mark.asyncio
     async def test_notify_failure_preserves_superseded_pending_entry(
@@ -717,11 +716,8 @@ class TestSendVerdict:
 
     @pytest.mark.asyncio
     async def test_action_callback_is_wired_on_block(self, mock_notifier: AsyncMock) -> None:
-        """ConnectionBlocked installs an on_action callback that routes to Verdict."""
-        bus = _mock_bus()
-        sub = EventSubscriber(mock_notifier, bus=bus)
-        sub._bus = bus
-        sub._shield_owner = ":1.77"
+        """``Verdict`` carries the cached domain when the signal had one."""
+        sub, bus = _seed_subscriber(mock_notifier)
         sub._on_message(_connection_blocked_signal())
         await asyncio.sleep(0)
         mock_notifier.on_action.assert_awaited_once()
@@ -731,7 +727,33 @@ class TestSendVerdict:
         assert bus.call.await_count >= 1
         msg = bus.call.await_args[0][0]
         assert msg.member == "Verdict"
+        assert msg.body == [CONTAINER, _REQUEST_ID, DOMAIN, "allow"]
+
+    @pytest.mark.asyncio
+    async def test_action_callback_falls_back_to_dest_when_signal_has_no_domain(
+        self, mock_notifier: AsyncMock
+    ) -> None:
+        """Empty domain → ``Verdict`` falls back to the destination IP."""
+        sub, bus = _seed_subscriber(mock_notifier)
+        sub._on_message(_connection_blocked_signal(domain=""))
+        await asyncio.sleep(0)
+        action_cb = mock_notifier.on_action.await_args[0][1]
+        action_cb("allow")
+        await asyncio.sleep(0)
+        msg = bus.call.await_args[0][0]
         assert msg.body == [CONTAINER, _REQUEST_ID, DEST_IP, "allow"]
+
+    @pytest.mark.asyncio
+    async def test_signal_with_empty_target_is_dropped(self, mock_notifier: AsyncMock) -> None:
+        """Malformed signal with neither dest nor domain → no notification, no verdict.
+
+        Forwarding an empty string would poison shield's ``allow_domain``.
+        """
+        sub, _ = _seed_subscriber(mock_notifier)
+        sub._on_message(_connection_blocked_signal(dest="", domain=""))
+        await asyncio.sleep(0)
+        mock_notifier.notify.assert_not_called()
+        assert sub._pending == {}
 
 
 # ── Name resolver off-thread + error handling ─────────────────────────

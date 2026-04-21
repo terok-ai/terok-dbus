@@ -107,10 +107,13 @@ class _PendingBlock:
     notification_id: int
     container: str
     request_id: str
-    dest: str
-    dedup_key: str
-    """Stable ``(container, domain-or-dest)`` identifier: a re-block of the
-    same target reuses this record's popup instead of stacking a new one."""
+    target: str
+    """Domain if the reader cached one, else the destination IP.
+
+    Serves as verdict subject, dedup key, and resolved-title string —
+    see :meth:`EventSubscriber._handle_connection_blocked` for the
+    dnsmasq rationale behind preferring the domain.
+    """
     count: int = 1
     """How many times this target has been blocked since ``first_seen`` —
     rendered in the body as ``Blocked N times since HH:MM:SS`` so the
@@ -423,26 +426,34 @@ class EventSubscriber:
     ) -> None:
         """Prompt the operator to allow or deny a newly-blocked connection.
 
-        A prior unresolved block on the same ``(container, domain)``
-        target reuses its live popup: one decision, one domain, one
-        visible prompt.  The verdict then routes to the latest
-        ``request_id`` because that is what the shield is blocking
-        right now.
+        A live prompt for the same ``(container, target)`` is reused
+        instead of stacked — one decision, one target, one popup — and
+        the verdict routes to the latest ``request_id`` because that's
+        what the shield is blocking right now.
+
+        The target is the cached domain when the reader had one, else
+        the destination IP.  Shield's ``allow`` dispatches on shape;
+        only the domain form tracks future DNS rotations through
+        dnsmasq's ipset integration.
         """
-        display = domain if domain else dest
+        target = domain or dest
+        if not target:
+            # Malformed signal: nothing to decide about and nothing shield
+            # could act on (``allow_domain("")`` would poison dnsmasq config).
+            _log.warning("Dropping ConnectionBlocked with empty dest and domain [%s]", request_id)
+            return
         proto_name = _PROTO_NAMES.get(proto, str(proto))
         # Human-readable name in the body; raw ID still flows through
         # ``container_id`` for TUI consumers and verdict routing.
         name = await self._resolve_container_name(container)
-        _log.info("Blocked: %s:%d/%s (%s) [%s]", display, port, proto_name, container, request_id)
+        _log.info("Blocked: %s:%d/%s (%s) [%s]", target, port, proto_name, container, request_id)
 
-        dedup_key = domain or dest
-        prior = self._live_block_on(container, dedup_key)
+        prior = self._live_block_on(container, target)
         count = prior.count + 1 if prior else 1
         first_seen = prior.first_seen if prior else _wallclock_hhmmss()
 
         nid = await self._notifier.notify(
-            f"Blocked: {display}:{port}",
+            f"Blocked: {target}:{port}",
             _blocked_body(name or container, proto_name, count, first_seen),
             actions=[("allow", "Allow"), ("deny", "Deny")],
             hints=_HINT_BLOCK_PENDING,
@@ -459,20 +470,21 @@ class EventSubscriber:
             notification_id=nid,
             container=container,
             request_id=request_id,
-            dest=dest,
-            dedup_key=dedup_key,
+            target=target,
             count=count,
             first_seen=first_seen,
         )
         await self._notifier.on_action(
             nid,
-            lambda action: self._dispatch(self._send_verdict(container, request_id, dest, action)),
+            lambda action: self._dispatch(
+                self._send_verdict(container, request_id, target, action)
+            ),
         )
 
-    def _live_block_on(self, container: str, dedup_key: str) -> _PendingBlock | None:
+    def _live_block_on(self, container: str, target: str) -> _PendingBlock | None:
         """The pending block awaiting a verdict on this target, if any."""
         for pending in self._pending.values():
-            if pending.container == container and pending.dedup_key == dedup_key:
+            if pending.container == container and pending.target == target:
                 return pending
         return None
 
@@ -494,10 +506,10 @@ class EventSubscriber:
         success_titles = {"allow": "Allowed", "deny": "Denied"}
         failure_titles = {"allow": "Allow failed", "deny": "Deny failed"}
         if ok:
-            title = f"{success_titles.get(action, action.title())}: {pending.dest}"
+            title = f"{success_titles.get(action, action.title())}: {pending.target}"
             hints = _HINT_CONFIRMATION
         else:
-            title = f"{failure_titles.get(action, action.title() + ' failed')}: {pending.dest}"
+            title = f"{failure_titles.get(action, action.title() + ' failed')}: {pending.target}"
             hints = _HINT_SECURITY_ALERT
         # ``pending.container`` is the ground truth for this notification
         # thread — captured when ConnectionBlocked landed.  Treat the
@@ -656,9 +668,11 @@ class EventSubscriber:
             container_name=name,
         )
 
-    async def _send_verdict(self, container: str, request_id: str, dest: str, action: str) -> None:
-        """Call ``Verdict`` on the hub (``org.terok.Shield1`` well-known name)."""
-        _log.info("Sending verdict: %s / %s (%s) → %s", container, request_id, dest, action)
+    async def _send_verdict(
+        self, container: str, request_id: str, target: str, action: str
+    ) -> None:
+        """Route the operator's verdict to the hub's ``Shield1.Verdict`` method."""
+        _log.info("Sending verdict: %s / %s (%s) → %s", container, request_id, target, action)
         try:
             await self._bus.call(
                 Message(
@@ -667,7 +681,7 @@ class EventSubscriber:
                     interface=SHIELD_INTERFACE_NAME,
                     member="Verdict",
                     signature="ssss",
-                    body=[container, request_id, dest, action],
+                    body=[container, request_id, target, action],
                 )
             )
         except Exception:
