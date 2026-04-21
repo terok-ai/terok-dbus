@@ -147,34 +147,49 @@ async def _cleanup_with_timeout(
         bus.disconnect()
 
 
-def _make_event_sink(hub: "ShieldHub") -> "Callable[[dict], Awaitable[None]]":
-    """Return an async sink that relays reader events onto the hub's signals.
+def _emit_pending(hub: "ShieldHub", event: dict) -> None:
+    """Fan a reader ``pending`` event out as a ``ConnectionBlocked`` signal."""
+    hub.ConnectionBlocked(
+        event["container"],
+        event["id"],
+        event["dest"],
+        int(event["port"]),
+        int(event["proto"]),
+        event.get("domain", ""),
+    )
 
-    Each event ``type`` maps to one emission; unknown types are ignored so
-    the wire format can grow without breaking old hubs.  KeyError on a
-    malformed event is caught by the ingester's dispatch loop and logged,
-    so one missing field won't kill the relay.
-    """
+
+def _emit_container_started(hub: "ShieldHub", event: dict) -> None:
+    """Fan a reader ``container_started`` event out as a ``ContainerStarted`` signal."""
+    hub.ContainerStarted(event["container"])
+
+
+def _emit_container_exited(hub: "ShieldHub", event: dict) -> None:
+    """Fan a reader ``container_exited`` event out as a ``ContainerExited`` signal."""
+    hub.ContainerExited(event["container"], event.get("reason", ""))
+
+
+#: Catalog: reader event ``type`` → hub signal emitter.  Unknown types are
+#: dropped by the sink so the wire format can grow without breaking old
+#: hubs.  KeyError on a malformed event is caught by the ingester's
+#: dispatch loop and logged — one missing field won't kill the relay.
+_EVENT_EMITTERS: dict[str, Callable[["ShieldHub", dict], None]] = {
+    "pending": _emit_pending,
+    "container_started": _emit_container_started,
+    "container_exited": _emit_container_exited,
+}
+
+
+def _make_event_sink(hub: "ShieldHub") -> Callable[[dict], Awaitable[None]]:
+    """Return an async sink that relays reader events onto the hub's signals."""
 
     async def sink(event: dict) -> None:  # NOSONAR(python:S7503)
         # ``async`` is structural — EventIngester.on_event expects
         # ``Callable[[dict], Awaitable[None]]``, and dbus-fast's
         # ``ServiceInterface`` signal methods are synchronous.  Nothing to
         # ``await``; the shape is imposed by the ingester contract.
-        kind = event.get("type")
-        if kind == "pending":
-            hub.ConnectionBlocked(
-                event["container"],
-                event["id"],
-                event["dest"],
-                int(event["port"]),
-                int(event["proto"]),
-                event.get("domain", ""),
-            )
-        elif kind == "container_started":
-            hub.ContainerStarted(event["container"])
-        elif kind == "container_exited":
-            hub.ContainerExited(event["container"], event.get("reason", ""))
+        if emitter := _EVENT_EMITTERS.get(event.get("type", "")):
+            emitter(hub, event)
 
     return sink
 

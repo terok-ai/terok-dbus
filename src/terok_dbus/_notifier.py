@@ -5,11 +5,20 @@
 
 import asyncio
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from dbus_fast.aio import MessageBus
 
 from terok_dbus._constants import BUS_NAME, INTERFACE_NAME, OBJECT_PATH
+
+
+@dataclass(frozen=True)
+class _Connection:
+    """A live session-bus handle paired with its Notifications proxy interface."""
+
+    bus: MessageBus
+    interface: Any  # dbus_fast ProxyInterface — dynamic-attribute object
 
 
 class DbusNotifier:
@@ -26,8 +35,7 @@ class DbusNotifier:
     def __init__(self, app_name: str = "terok") -> None:
         """Initialise with the given application name."""
         self._app_name = app_name
-        self._bus: MessageBus | None = None
-        self._interface: object | None = None
+        self._conn: _Connection | None = None
         self._callbacks: dict[int, Callable[[str], None]] = {}
         self._connect_lock = asyncio.Lock()
 
@@ -37,10 +45,10 @@ class DbusNotifier:
         Safe to call concurrently and repeatedly: the lock serialises racing
         callers so exactly one MessageBus is ever created for this notifier.
         """
-        if self._interface is not None:
+        if self._conn is not None:
             return
         async with self._connect_lock:
-            if self._interface is not None:
+            if self._conn is not None:
                 return
             bus = await MessageBus().connect()
             try:
@@ -57,8 +65,7 @@ class DbusNotifier:
                 # leak the already-connected bus.
                 bus.disconnect()
                 raise
-            self._bus = bus
-            self._interface = iface
+            self._conn = _Connection(bus=bus, interface=iface)
 
     def _handle_action(self, notification_id: int, action_key: str) -> None:
         """Dispatch an ``ActionInvoked`` signal to the registered callback."""
@@ -95,12 +102,13 @@ class DbusNotifier:
             Server-assigned notification ID.
         """
         await self.connect()
+        assert self._conn is not None  # connect() post-condition
 
         actions_flat: list[str] = []
         for action_id, label in actions:
             actions_flat.extend((action_id, label))
 
-        return await self._interface.call_notify(  # type: ignore[union-attr]
+        return await self._conn.interface.call_notify(
             self._app_name,
             replaces_id,
             app_icon,
@@ -131,18 +139,18 @@ class DbusNotifier:
             notification_id: ID returned by ``notify``.
         """
         self._callbacks.pop(notification_id, None)
-        if self._interface is not None:
-            await self._interface.call_close_notification(notification_id)  # type: ignore[union-attr]
+        if self._conn is not None:
+            await self._conn.interface.call_close_notification(notification_id)
 
     async def disconnect(self) -> None:
         """Tear down the session-bus connection."""
-        if self._interface is None:
+        conn = self._conn
+        if conn is None:
             return
-        if hasattr(self._interface, "off_action_invoked"):
-            self._interface.off_action_invoked(self._handle_action)
-        if hasattr(self._interface, "off_notification_closed"):
-            self._interface.off_notification_closed(self._handle_closed)
-        self._bus.disconnect()  # type: ignore[union-attr]
-        self._bus = None
-        self._interface = None
+        if hasattr(conn.interface, "off_action_invoked"):
+            conn.interface.off_action_invoked(self._handle_action)
+        if hasattr(conn.interface, "off_notification_closed"):
+            conn.interface.off_notification_closed(self._handle_closed)
+        conn.bus.disconnect()
+        self._conn = None
         self._callbacks.clear()

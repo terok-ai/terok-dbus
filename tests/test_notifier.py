@@ -41,9 +41,10 @@ class TestDbusNotifierConnect:
     async def test_lazy_connect_on_first_notify(self, mock_bus: MagicMock):
         with patch("terok_dbus._notifier.MessageBus", return_value=mock_bus):
             notifier = DbusNotifier("test-app")
-            assert notifier._bus is None
+            assert notifier._conn is None
             await notifier.notify("hello")
-            assert notifier._bus is mock_bus
+            assert notifier._conn is not None
+            assert notifier._conn.bus is mock_bus
 
     async def test_connect_subscribes_to_signals(self, mock_bus: MagicMock):
         with patch("terok_dbus._notifier.MessageBus", return_value=mock_bus):
@@ -58,8 +59,7 @@ class TestDbusNotifierConnect:
             notifier = DbusNotifier()
             await notifier.connect()
             await notifier.disconnect()
-            assert notifier._bus is None
-            assert notifier._interface is None
+            assert notifier._conn is None
             assert notifier._callbacks == {}
 
     async def test_disconnect_unsubscribes_signals(self, mock_bus: MagicMock):
@@ -78,8 +78,7 @@ class TestDbusNotifierConnect:
             with pytest.raises(RuntimeError, match="boom"):
                 await notifier.connect()
             mock_bus.disconnect.assert_called_once()
-            assert notifier._bus is None
-            assert notifier._interface is None
+            assert notifier._conn is None
 
     async def test_connect_and_notify_share_the_lock(self, mock_bus: MagicMock):
         """A ``connect()`` + ``notify()`` race must produce exactly one MessageBus."""
