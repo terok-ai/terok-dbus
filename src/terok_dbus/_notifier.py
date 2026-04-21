@@ -32,30 +32,43 @@ class DbusNotifier:
         self._connect_lock = asyncio.Lock()
 
     async def connect(self) -> None:
-        """Public entry point for eager-connecting; delegates to the internal helper.
+        """Idempotently establish the session-bus connection.
 
-        ``notify()`` lazy-connects on first use; callers who want to verify
-        Notifications is reachable ahead of time (e.g. the hub's startup
-        probe) should call this and handle the exception themselves.
+        Callers who want to verify Notifications is reachable ahead of
+        time (e.g. the hub's startup probe) invoke this directly and
+        handle the exception themselves; ``notify()`` lazy-connects via
+        the same path on first use.  Concurrent calls are safe —
+        subsequent callers observe the already-connected state under
+        the same lock and return without opening a second MessageBus.
         """
         await self._connect()
 
     async def _connect(self) -> None:
-        """Establish the session-bus connection and subscribe to signals."""
-        bus = await MessageBus().connect()
-        try:
-            introspection = await bus.introspect(BUS_NAME, OBJECT_PATH)
-            proxy = bus.get_proxy_object(BUS_NAME, OBJECT_PATH, introspection)
-            iface = proxy.get_interface(INTERFACE_NAME)
-            if hasattr(iface, "on_action_invoked"):
-                iface.on_action_invoked(self._handle_action)
-            if hasattr(iface, "on_notification_closed"):
-                iface.on_notification_closed(self._handle_closed)
-        except Exception:
-            bus.disconnect()
-            raise
-        self._bus = bus
-        self._interface = iface
+        """Open and register the bus, guarded against concurrent callers.
+
+        The lock serialises racing ``connect()`` / ``notify()`` calls so
+        exactly one MessageBus is created; a repeat caller sees
+        ``self._interface`` already set and returns early.
+        """
+        if self._interface is not None:
+            return
+        async with self._connect_lock:
+            if self._interface is not None:
+                return
+            bus = await MessageBus().connect()
+            try:
+                introspection = await bus.introspect(BUS_NAME, OBJECT_PATH)
+                proxy = bus.get_proxy_object(BUS_NAME, OBJECT_PATH, introspection)
+                iface = proxy.get_interface(INTERFACE_NAME)
+                if hasattr(iface, "on_action_invoked"):
+                    iface.on_action_invoked(self._handle_action)
+                if hasattr(iface, "on_notification_closed"):
+                    iface.on_notification_closed(self._handle_closed)
+            except Exception:
+                bus.disconnect()
+                raise
+            self._bus = bus
+            self._interface = iface
 
     def _handle_action(self, notification_id: int, action_key: str) -> None:
         """Dispatch an ``ActionInvoked`` signal to the registered callback."""
@@ -91,10 +104,7 @@ class DbusNotifier:
         Returns:
             Server-assigned notification ID.
         """
-        if self._interface is None:
-            async with self._connect_lock:
-                if self._interface is None:
-                    await self._connect()
+        await self._connect()
 
         actions_flat: list[str] = []
         for action_id, label in actions:
