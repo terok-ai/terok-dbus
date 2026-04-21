@@ -24,7 +24,7 @@ UNIT_NAME = "terok-dbus.service"
 STATE_DIR_ENV = "TEROK_SHIELD_STATE_DIR"
 
 
-def install_service(bin_path: Path | str) -> Path:
+def install_service(bin_path: Path | list[str]) -> Path:
     """Render the unit template, write it into the user systemd directory, reload.
 
     Captures ``TEROK_SHIELD_STATE_DIR`` from the current environment
@@ -35,15 +35,20 @@ def install_service(bin_path: Path | str) -> Path:
     uses its XDG-based default (which is usually the right answer).
 
     Args:
-        bin_path: Absolute path to the ``terok-dbus`` launcher (typically
-            ``shutil.which("terok-dbus")`` or
-            ``"{sys.executable} -m terok_dbus._cli"``).
+        bin_path: Either a ``Path`` naming the ``terok-dbus`` launcher
+            (a single executable, space-tolerant — e.g. from
+            ``shutil.which("terok-dbus")``) or a ``list[str]`` argv
+            (the module-fallback form, e.g.
+            ``[sys.executable, "-m", "terok_dbus._cli"]``).  Each token
+            is quoted individually on render so systemd's whitespace
+            tokeniser sees the intended argv boundaries regardless of
+            spaces inside any element.
 
     Returns:
         The on-disk path the unit was written to.
     """
     template = _read_template()
-    rendered = template.replace("{{BIN}}", _render_exec_start(str(bin_path)))
+    rendered = template.replace("{{BIN}}", _render_exec_start(bin_path))
     rendered = _inject_state_dir_env(rendered, os.environ.get(STATE_DIR_ENV))
     dest = _user_systemd_dir() / UNIT_NAME
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -62,6 +67,8 @@ def _inject_state_dir_env(rendered: str, state_dir: str | None) -> str:
     """
     if not state_dir:
         return rendered
+    if any(ch in state_dir for ch in ("\n", "\r")):
+        raise ValueError(f"{STATE_DIR_ENV} is not safe to embed in Environment=: {state_dir!r}")
     quoted = _systemd_quote(state_dir)
     marker = f"# injected-at-install: {STATE_DIR_ENV}={state_dir}\n"
     env_line = f'Environment="{STATE_DIR_ENV}={quoted}"\n'
@@ -77,26 +84,27 @@ def _inject_state_dir_env(rendered: str, state_dir: str | None) -> str:
     return "".join(result)
 
 
-def _render_exec_start(bin_path: str) -> str:
+def _render_exec_start(bin_path: Path | list[str]) -> str:
     """Prepare a ``{{BIN}}`` substitution value suitable for ``ExecStart=``.
 
-    Two shapes reach this helper by design:
-     * a single absolute path such as ``shutil.which("terok-dbus")`` — possibly
-       containing spaces if the operator installed into an unusual location;
-     * a multi-token fallback such as ``/usr/bin/python -m terok_dbus._cli``
-       produced when ``terok-dbus`` isn't on ``PATH``.
-
-    The single-path case gets wrapped in systemd quotes so a space in the
-    path doesn't get tokenised into separate arguments.  The multi-token
-    case is passed through — its whitespace is meaningful.  In both cases
-    literal double quotes and backslashes are escaped so the resulting line
-    is round-trippable.
+    Quotes each argv token individually — spaces inside a single element
+    (an install path under ``/home/me/My Tools/``) stay inside one
+    token, and whitespace between tokens remains a systemd separator.
+    Rejects control characters that would break line semantics in the
+    rendered unit.
     """
-    if any(ch in bin_path for ch in ("\n", "\r")):
-        raise ValueError(f"bin_path is not safe to embed in ExecStart=: {bin_path!r}")
-    if bin_path.startswith("/") and " " in bin_path and " -" not in bin_path:
-        return f'"{_systemd_quote(bin_path)}"'
-    return bin_path
+    tokens = [str(bin_path)] if isinstance(bin_path, Path) else [str(t) for t in bin_path]
+    for token in tokens:
+        if any(ch in token for ch in ("\n", "\r")):
+            raise ValueError(f"bin_path token is not safe to embed in ExecStart=: {token!r}")
+    return " ".join(_quote_exec_token(t) for t in tokens)
+
+
+def _quote_exec_token(token: str) -> str:
+    """Wrap *token* in systemd double-quotes when it contains tokeniser-meaningful whitespace."""
+    if any(ch.isspace() for ch in token):
+        return f'"{_systemd_quote(token)}"'
+    return _systemd_quote(token)
 
 
 def _systemd_quote(value: str) -> str:

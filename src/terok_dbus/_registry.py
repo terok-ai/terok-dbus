@@ -81,12 +81,14 @@ async def _handle_install_service(*, bin_path: str | None = None) -> None:  # NO
     """
     import shutil
     import sys
+    from pathlib import Path as _Path
 
     from terok_dbus._install import install_service  # tach-ignore
 
-    resolved = bin_path or shutil.which("terok-dbus")
-    if resolved is None:
-        resolved = f"{sys.executable} -m terok_dbus._cli"
+    discovered = bin_path or shutil.which("terok-dbus")
+    resolved: _Path | list[str] = (
+        _Path(discovered) if discovered is not None else [sys.executable, "-m", "terok_dbus._cli"]
+    )
     dest = install_service(resolved)
     print(f"Installed {dest}")  # noqa: T201
     print(  # noqa: T201
