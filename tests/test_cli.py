@@ -92,6 +92,19 @@ class TestInstallServiceDispatch:
             main()
         assert seen["bin_path"] == "/custom/bin"
 
+    def test_install_service_rejects_empty_bin_path(self, monkeypatch) -> None:
+        """``--bin-path ''`` is operator error, not "discover it for me"."""
+
+        def _fake_install(bin_path):
+            raise AssertionError("install_service must not be called on empty --bin-path")
+
+        monkeypatch.setattr("terok_dbus._install.install_service", _fake_install)
+        with (
+            patch("sys.argv", ["terok-dbus", "install-service", "--bin-path", ""]),
+            pytest.raises(SystemExit),
+        ):
+            main()
+
 
 class TestNoSubcommand:
     """Bare ``terok-dbus`` with no subcommand."""

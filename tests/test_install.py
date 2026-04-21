@@ -104,6 +104,15 @@ class TestStateDirEnvBaking:
         with patch.object(_install, "_daemon_reload"), pytest.raises(ValueError):
             install_service(Path("/a/terok-dbus"))
 
+    def test_state_dir_with_carriage_return_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A lone ``\\r`` also terminates lines for systemd's parser — reject it too."""
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        monkeypatch.setenv("TEROK_SHIELD_STATE_DIR", "/foo\rRestart=never")
+        with patch.object(_install, "_daemon_reload"), pytest.raises(ValueError):
+            install_service(Path("/a/terok-dbus"))
+
 
 class TestRenderExecStart:
     """Each argv token is quoted individually — spaces don't leak across boundaries."""

@@ -85,6 +85,8 @@ async def _handle_install_service(*, bin_path: str | None = None) -> None:  # NO
 
     from terok_dbus._install import install_service  # tach-ignore
 
+    if bin_path is not None and not bin_path:
+        raise SystemExit("install-service: --bin-path cannot be empty")
     discovered = bin_path or shutil.which("terok-dbus")
     resolved: _Path | list[str] = (
         _Path(discovered) if discovered is not None else [sys.executable, "-m", "terok_dbus._cli"]
