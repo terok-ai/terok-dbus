@@ -183,8 +183,11 @@ class ClearanceHub:
         """Close the varlink server + ingester; drain subscriber queues."""
         if self._varlink_server is not None:
             self._varlink_server.close()
-            with contextlib.suppress(Exception):
-                await self._varlink_server.wait_closed()
+            # ``wait_closed`` can block forever if a subscriber connection
+            # is mid-generator — cap it so a flaky client doesn't burn
+            # systemd's stop-sigterm deadline.
+            with contextlib.suppress(TimeoutError, Exception):
+                await asyncio.wait_for(self._varlink_server.wait_closed(), timeout=1.0)
             self._varlink_server = None
         if self._ingester is not None:
             with contextlib.suppress(Exception):
