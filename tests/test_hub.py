@@ -373,3 +373,29 @@ class TestRelayReaderEvent:
         hub._subscribers.add(q)
         await hub._relay_reader_event({"type": "pending"})  # no container, no id
         assert q.empty()
+
+
+# ── start() rollback ──────────────────────────────────────────────────
+
+
+class TestStartRollback:
+    """``start()`` must not leak a live ingester when the varlink bind fails."""
+
+    @pytest.mark.asyncio
+    async def test_bind_failure_stops_ingester(self) -> None:
+        """If bind_hardened raises, the already-started ingester is stopped + cleared."""
+        hub = _hub()
+        ingester = AsyncMock()
+        with (
+            patch("terok_dbus._hub.EventIngester", return_value=ingester),
+            patch(
+                "terok_dbus._unix_socket.bind_hardened",
+                side_effect=OSError("simulated bind failure"),
+            ),
+        ):
+            with pytest.raises(OSError, match="simulated bind failure"):
+                await hub.start()
+        ingester.start.assert_awaited_once()
+        ingester.stop.assert_awaited_once()
+        assert hub._ingester is None
+        assert hub._varlink_server is None
