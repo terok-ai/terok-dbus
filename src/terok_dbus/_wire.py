@@ -149,9 +149,16 @@ class Clearance1Interface(VarlinkInterface, name=CLEARANCE_INTERFACE_NAME):
         self._event_stream_factory = event_stream_factory
         self._apply_verdict = apply_verdict
 
-    @varlinkmethod(return_parameter="event")
+    @varlinkmethod(return_parameter="event", delay_generator=False)
     async def Subscribe(self) -> AsyncIterator[ClearanceEvent]:  # noqa: N802
-        """Stream hub events to this caller until the connection closes."""
+        """Stream hub events to this caller until the connection closes.
+
+        Every yield is forwarded immediately with ``continues=true``;
+        the stream ends only when the client disconnects.  A buffered
+        (``delay_generator=True``) stream would hold the first event
+        until a second arrives, breaking the "something just happened"
+        liveness contract operators expect from a notification channel.
+        """
         async for event in self._event_stream_factory():
             yield event
 
