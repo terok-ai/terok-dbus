@@ -25,6 +25,7 @@ packages = [
 [tool.poetry.dependencies]
 python = ">=3.12,<4.0"
 dbus-fast = ">=2.0,<5.0"
+asyncvarlink = "^0.3.1"
 
 [tool.poetry.group.dev.dependencies]
 ruff = ">=0.15.10"
