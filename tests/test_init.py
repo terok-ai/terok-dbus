@@ -15,12 +15,13 @@ class TestPublicApi:
     def test_all_exports(self):
         expected = {
             "CallbackNotifier",
+            "ContainerIdentity",
             "DbusNotifier",
             "EventSubscriber",
             "Notification",
             "NullNotifier",
             "Notifier",
-            "PodmanContainerNameResolver",
+            "PodmanIdentityResolver",
             "create_notifier",
             "CLEARANCE_BUS_NAME",
             "CLEARANCE_INTERFACE_NAME",

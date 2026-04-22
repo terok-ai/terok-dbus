@@ -104,26 +104,19 @@ class DbusNotifier:
         app_icon: str = "",
         container_id: str = "",  # noqa: ARG002 — protocol kwarg ignored by desktop
         container_name: str = "",  # noqa: ARG002 — protocol kwarg ignored by desktop
+        project: str = "",  # noqa: ARG002 — protocol kwarg ignored by desktop
+        task_id: str = "",  # noqa: ARG002 — protocol kwarg ignored by desktop
+        task_name: str = "",  # noqa: ARG002 — protocol kwarg ignored by desktop
     ) -> int:
         """Send a desktop notification.
 
-        Args:
-            summary: Notification title.
-            body: Optional body text.
-            actions: ``(action_id, label)`` pairs rendered as buttons.
-            timeout_ms: Expiration hint in milliseconds (``-1`` = server default).
-            hints: Freedesktop hint dict (values should be ``dbus_fast.Variant``).
-            replaces_id: Replace an existing notification in-place.
-            app_icon: Icon name or ``file:///`` URI.
-            container_id: Accepted for protocol compatibility; dropped on
-                the floor.  Freedesktop notifications render summary + body
-                + actions only, so the ID has no place in the desktop popup
-                and the caller is expected to have folded the user-facing
-                name (if any) into ``body`` already.
-            container_name: Likewise.
-
-        Returns:
-            Server-assigned notification ID.
+        Freedesktop notifications render summary + body + actions only,
+        so the structured identity kwargs (``container_id`` and the
+        terok task triple) are dropped on the floor here — callers are
+        expected to have folded the user-facing identity into ``body``
+        already.  The kwargs stay in the signature for
+        :class:`~terok_dbus._protocol.Notifier` conformance so callers
+        don't have to branch on notifier kind.
         """
         await self.connect()
         assert self._conn is not None  # connect() post-condition

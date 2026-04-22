@@ -25,6 +25,9 @@ class NullNotifier:
         app_icon: str = "",
         container_id: str = "",
         container_name: str = "",
+        project: str = "",
+        task_id: str = "",
+        task_name: str = "",
     ) -> int:
         """Accept and discard a notification, returning ``0``."""
         return 0

@@ -28,6 +28,9 @@ class Notifier(Protocol):
         app_icon: str = "",
         container_id: str = "",
         container_name: str = "",
+        project: str = "",
+        task_id: str = "",
+        task_name: str = "",
     ) -> int:
         """Send a desktop notification.
 
@@ -40,13 +43,21 @@ class Notifier(Protocol):
                 ``DbusNotifier``, ignored by ``NullNotifier``).
             replaces_id: Replace an existing notification in-place.
             app_icon: Icon name or ``file:///`` URI.
-            container_id: Optional 12-char podman container ID for
-                presentation-layer consumers (TUI).  The desktop
-                ``DbusNotifier`` ignores it; ``CallbackNotifier`` attaches it
-                to the :class:`~terok_dbus._callback.Notification` so rich
-                consumers can render it alongside the user-facing name.
-            container_name: Optional human-readable container name matching
-                the ID.  Same propagation rules as ``container_id``.
+            container_id: Presentation-layer hint: the 12-char podman
+                container ID the event refers to.  The desktop
+                ``DbusNotifier`` ignores it; ``CallbackNotifier`` attaches
+                it to the :class:`~terok_dbus._callback.Notification` so
+                rich consumers can render it alongside the user-facing name.
+            container_name: Podman ``--name`` matching the ID.  Same
+                propagation rules as ``container_id``.
+            project: Terok project slug when the container is orchestrator-
+                managed (from the ``ai.terok.project`` annotation).  Empty
+                for standalone containers.
+            task_id: Terok task ID (``ai.terok.task`` annotation); empty
+                for standalone containers.
+            task_name: Human-readable task label from terok's metadata —
+                mutable at any point in the task's life, so resolved live
+                by callers, not snapshotted.  Empty when unknown.
 
         Returns:
             Server-assigned notification ID (``0`` for null implementations).

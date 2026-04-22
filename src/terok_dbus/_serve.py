@@ -32,7 +32,7 @@ from terok_dbus._interfaces import (
 )
 from terok_dbus._notifier import DbusNotifier
 from terok_dbus._null import NullNotifier
-from terok_dbus._podman import PodmanContainerNameResolver
+from terok_dbus._podman import PodmanIdentityResolver
 from terok_dbus._protocol import Notifier
 from terok_dbus._subscriber import EventSubscriber
 
@@ -81,7 +81,7 @@ async def serve() -> None:  # pragma: no cover — integration path, real sessio
     subscriber = EventSubscriber(
         notifier,
         bus=bus,
-        name_resolver=PodmanContainerNameResolver(),
+        identity_resolver=PodmanIdentityResolver(),
     )
     await subscriber.start()
 

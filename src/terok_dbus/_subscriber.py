@@ -22,6 +22,7 @@ from dbus_fast import MessageType, Variant
 from dbus_fast.aio import MessageBus
 from dbus_fast.message import Message
 
+from terok_dbus._identity import ContainerIdentity
 from terok_dbus._interfaces import (
     CLEARANCE_BUS_NAME,
     CLEARANCE_INTERFACE_NAME,
@@ -79,7 +80,34 @@ def _wallclock_hhmmss() -> str:
     return datetime.now().strftime("%H:%M:%S")  # noqa: DTZ005 — display-only
 
 
-def _blocked_body(container_label: str, proto_name: str, count: int, first_seen: str) -> str:
+def _identity_label(identity: ContainerIdentity, fallback_id: str) -> str:
+    """Compact identity string for titles — task triple when known, else name.
+
+    Terok-managed containers carry ``project`` + ``task_id`` via OCI
+    annotations; the human-readable ``task_name`` is looked up live
+    and may be empty mid-rename.  Ordering is ``project/task_id · name``
+    so the stable identifiers lead and the mutable label trails as a
+    hint, readable even when the latter is missing.
+    """
+    if identity.project and identity.task_id:
+        core = f"{identity.project}/{identity.task_id}"
+        return f"{core} · {identity.task_name}" if identity.task_name else core
+    return identity.container_name or fallback_id
+
+
+def _identity_line(identity: ContainerIdentity, fallback_id: str) -> str:
+    """First line of a notification body — a prefixed :func:`_identity_label`."""
+    prefix = "Task" if identity.project and identity.task_id else "Container"
+    return f"{prefix}: {_identity_label(identity, fallback_id)}"
+
+
+def _blocked_body(
+    identity: ContainerIdentity,
+    fallback_id: str,
+    proto_name: str,
+    count: int,
+    first_seen: str,
+) -> str:
     """Render the body for a ConnectionBlocked notification.
 
     For the first block the body is two lines; on every subsequent hit
@@ -87,7 +115,7 @@ def _blocked_body(container_label: str, proto_name: str, count: int, first_seen:
     first block so the operator can see at a glance "how often, for how
     long" without opening an expanded view.
     """
-    lines = [f"Container: {container_label}", f"Protocol: {proto_name}"]
+    lines = [_identity_line(identity, fallback_id), f"Protocol: {proto_name}"]
     if count > 1:
         lines.append(f"Blocked {count} times since {first_seen}")
     return "\n".join(lines)
@@ -173,14 +201,14 @@ class EventSubscriber:
         bus: Optional pre-connected ``MessageBus`` (for testing).  ``None``
             means we create and own a new session-bus connection on
             :meth:`start`.
-        name_resolver: Optional callable that maps a short container ID to
-            a human-readable container name.  When provided, the subscriber
-            uses the name in the notification body and passes both values
-            to ``notify()`` so rich consumers (TUI) can render ``name (id)``.
-            When ``None``, the ID is used in the body and ``container_name``
-            is forwarded as empty.  The resolver is called on every
-            ``ConnectionBlocked`` — callers that need caching should wrap
-            it themselves (e.g. :class:`PodmanContainerNameResolver`).
+        identity_resolver: Optional callable mapping a short container
+            ID to a :class:`ContainerIdentity`.  When provided, the
+            subscriber renders "Task: project/task_id · task_name" in
+            the body for terok-managed containers and falls back to
+            "Container: name" otherwise.  When ``None``, the ID itself
+            is used in the body.  Called on every ``ConnectionBlocked``
+            and ``VerdictApplied``; callers that need caching should
+            wrap it themselves (e.g. :class:`PodmanIdentityResolver`).
     """
 
     def __init__(
@@ -188,13 +216,13 @@ class EventSubscriber:
         notifier: Notifier,
         bus: MessageBus | None = None,
         *,
-        name_resolver: Callable[[str], str] | None = None,
+        identity_resolver: Callable[[str], ContainerIdentity] | None = None,
     ) -> None:
         """Initialise the subscriber with a notifier and optional bus + resolver."""
         self._notifier = notifier
         self._bus = bus
         self._owns_bus = bus is None
-        self._name_resolver = name_resolver
+        self._identity_resolver = identity_resolver
         # Dedup lookups scan the values — at a handful of live prompts the
         # extra index isn't worth the coherence burden.
         self._pending: dict[str, _PendingBlock] = {}
@@ -443,9 +471,7 @@ class EventSubscriber:
             _log.warning("Dropping ConnectionBlocked with empty dest and domain [%s]", request_id)
             return
         proto_name = _PROTO_NAMES.get(proto, str(proto))
-        # Human-readable name in the body; raw ID still flows through
-        # ``container_id`` for TUI consumers and verdict routing.
-        name = await self._resolve_container_name(container)
+        identity = await self._resolve_identity(container)
         _log.info("Blocked: %s:%d/%s (%s) [%s]", target, port, proto_name, container, request_id)
 
         prior = self._live_block_on(container, target)
@@ -454,13 +480,16 @@ class EventSubscriber:
 
         nid = await self._notifier.notify(
             f"Blocked: {target}:{port}",
-            _blocked_body(name or container, proto_name, count, first_seen),
+            _blocked_body(identity, container, proto_name, count, first_seen),
             actions=[("allow", "Allow"), ("deny", "Deny")],
             hints=_HINT_BLOCK_PENDING,
             timeout_ms=0,
             replaces_id=prior.notification_id if prior else 0,
             container_id=container,
-            container_name=name,
+            container_name=identity.container_name,
+            project=identity.project,
+            task_id=identity.task_id,
+            task_name=identity.task_name,
         )
         # A raising notify() must leave the prior record intact so the
         # lifecycle handlers keep a handle on the orphan popup.
@@ -523,15 +552,18 @@ class EventSubscriber:
                 container,
                 pending.container,
             )
-        name = await self._resolve_container_name(pending.container)
+        identity = await self._resolve_identity(pending.container)
         await self._notifier.notify(
             title,
-            f"Container: {name or pending.container}",
+            _identity_line(identity, pending.container),
             replaces_id=pending.notification_id,
             hints=hints,
             timeout_ms=-1,
             container_id=pending.container,
-            container_name=name,
+            container_name=identity.container_name,
+            project=identity.project,
+            task_id=identity.task_id,
+            task_name=identity.task_name,
         )
 
     async def _handle_shield_down(self, container: str) -> None:
@@ -597,8 +629,8 @@ class EventSubscriber:
         via ``replaces_id`` so we don't pile up stale popups if shield
         flips a few times in a row.
         """
-        name = await self._resolve_container_name(container)
-        label = name or container
+        identity = await self._resolve_identity(container)
+        label = _identity_label(identity, container)
         if allow_all:
             title = f"Shield full bypass: {label}"
             body = "Outbound firewall fully disabled — every destination is reachable."
@@ -613,7 +645,10 @@ class EventSubscriber:
             timeout_ms=-1,
             replaces_id=replaces_id,
             container_id=container,
-            container_name=name,
+            container_name=identity.container_name,
+            project=identity.project,
+            task_id=identity.task_id,
+            task_name=identity.task_name,
         )
         self._shield_down_notifs[container] = nid
 
@@ -624,48 +659,61 @@ class EventSubscriber:
         shield is back it becomes misinformation.  Close the old popup
         by its tracked ``notification_id`` before firing the brief
         ``ShieldUp`` confirmation so the operator never sees both on
-        screen together.
+        screen together.  ``_HINT_CONFIRMATION`` (normal + transient)
+        gives GNOME enough signal to actually pop the toast before
+        reaping it — low-urgency lifecycle notifications skip the popup
+        entirely on stock desktops, hiding a state change the operator
+        just caused.
         """
         if (down_nid := self._shield_down_notifs.pop(container, None)) is not None:
             try:
                 await self._notifier.close(down_nid)
             except Exception:
                 _log.exception("Failed to close stale ShieldDown notification %d", down_nid)
-        name = await self._resolve_container_name(container)
-        label = name or container
+        identity = await self._resolve_identity(container)
+        label = _identity_label(identity, container)
         await self._notifier.notify(
             f"Shield up: {label}",
             "Outbound firewall restored.",
-            hints=_HINT_LIFECYCLE,
+            hints=_HINT_CONFIRMATION,
             timeout_ms=-1,
             container_id=container,
-            container_name=name,
+            container_name=identity.container_name,
+            project=identity.project,
+            task_id=identity.task_id,
+            task_name=identity.task_name,
         )
 
     async def _notify_container_started(self, container: str) -> None:
         """Low-urgency, transient confirmation that a shielded container came online."""
-        name = await self._resolve_container_name(container)
-        label = name or container
+        identity = await self._resolve_identity(container)
+        label = _identity_label(identity, container)
         await self._notifier.notify(
             f"Container started: {label}",
             "",
             hints=_HINT_LIFECYCLE,
             timeout_ms=-1,
             container_id=container,
-            container_name=name,
+            container_name=identity.container_name,
+            project=identity.project,
+            task_id=identity.task_id,
+            task_name=identity.task_name,
         )
 
     async def _notify_container_exited(self, container: str, reason: str) -> None:
         """Low-urgency, transient confirmation that a shielded container stopped."""
-        name = await self._resolve_container_name(container)
-        label = name or container
+        identity = await self._resolve_identity(container)
+        label = _identity_label(identity, container)
         await self._notifier.notify(
             f"Container stopped: {label}",
             f"Reason: {reason}" if reason else "",
             hints=_HINT_LIFECYCLE,
             timeout_ms=-1,
             container_id=container,
-            container_name=name,
+            container_name=identity.container_name,
+            project=identity.project,
+            task_id=identity.task_id,
+            task_name=identity.task_name,
         )
 
     async def _send_verdict(
@@ -756,26 +804,26 @@ class EventSubscriber:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
-    async def _resolve_container_name(self, container: str) -> str:
-        """Run the injected resolver on a worker thread — never block the loop.
+    async def _resolve_identity(self, container: str) -> ContainerIdentity:
+        """Run the injected identity resolver on a worker thread — never block the loop.
 
-        The default :class:`PodmanContainerNameResolver` shells out to
+        The default :class:`PodmanIdentityResolver` shells out to
         ``podman inspect`` with a 5 s timeout; the first-time miss for each
         container would otherwise stall every other coroutine on the hub
         (incoming signals, outgoing Notify calls, shutdown handlers).
         Subsequent calls are cache hits, but wrapping the sync call in
         :func:`asyncio.to_thread` makes the first-miss case equally safe
-        and keeps the two code paths symmetric.  Any exception (malformed
-        argv, unexpected podman behaviour) falls back to ``""`` so one bad
-        container never knocks the notification pipeline off the rails.
+        and keeps the two code paths symmetric.  Any exception falls back
+        to an empty identity so one bad container never knocks the
+        notification pipeline off the rails.
         """
-        if not container or self._name_resolver is None:
-            return ""
+        if not container or self._identity_resolver is None:
+            return ContainerIdentity()
         try:
-            return await asyncio.to_thread(self._name_resolver, container)
+            return await asyncio.to_thread(self._identity_resolver, container)
         except Exception:
-            _log.exception("Container name resolution failed for %s", container)
-            return ""
+            _log.exception("Identity resolution failed for %s", container)
+            return ContainerIdentity()
 
     def _dispatch_lifecycle(self, method: str, *args: str) -> None:
         """Invoke a lifecycle hook on the notifier if it implements one.

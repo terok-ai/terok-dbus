@@ -27,6 +27,7 @@ ignore_type_checking_imports = true
 [[modules]]
 path = "terok_dbus"
 depends_on = [
+    { path = "terok_dbus._identity" },
     { path = "terok_dbus._interfaces" },
     { path = "terok_dbus._notifier" },
     { path = "terok_dbus._null" },
@@ -59,10 +60,18 @@ depends_on = []
 path = "terok_dbus._notifier"
 depends_on = [{ path = "terok_dbus._constants" }]
 
+# Container identity value type (podman name + terok annotations + task name)
+[[modules]]
+path = "terok_dbus._identity"
+depends_on = []
+
 # Event subscriber (Shield1 + Clearance1 signal bridge)
 [[modules]]
 path = "terok_dbus._subscriber"
-depends_on = [{ path = "terok_dbus._interfaces" }]
+depends_on = [
+    { path = "terok_dbus._identity" },
+    { path = "terok_dbus._interfaces" },
+]
 
 # Command registry (consumed by CLI and terok integration layer)
 [[modules]]

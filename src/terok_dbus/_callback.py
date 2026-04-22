@@ -27,12 +27,13 @@ from typing import Any
 class Notification:
     """Snapshot of a single notification posted by the subscriber.
 
-    ``container_id`` and ``container_name`` are presentation-layer
-    context propagated through the ``Notifier.notify`` kwargs of the
-    same name — empty when the subscriber didn't resolve them (e.g. no
-    ``name_resolver`` injected).  The desktop :class:`DbusNotifier`
-    discards both; the TUI uses them to render ``name (id)`` while
-    still showing the IDs in the scrolling log.
+    The identity fields (``container_id``, ``container_name``,
+    ``project``, ``task_id``, ``task_name``) are presentation-layer
+    context the subscriber's ``identity_resolver`` produced — empty
+    strings when unresolved.  The desktop :class:`DbusNotifier`
+    discards all of them; the TUI uses the task triple to render a
+    Task column for terok-managed containers and falls back to the
+    container name for standalone ones.
     """
 
     nid: int
@@ -43,6 +44,9 @@ class Notification:
     timeout_ms: int
     container_id: str = ""
     container_name: str = ""
+    project: str = ""
+    task_id: str = ""
+    task_name: str = ""
 
 
 class CallbackNotifier:
@@ -99,6 +103,9 @@ class CallbackNotifier:
         app_icon: str = "",
         container_id: str = "",
         container_name: str = "",
+        project: str = "",
+        task_id: str = "",
+        task_name: str = "",
     ) -> int:
         """Record the notification and invoke the ``on_notify`` hook.
 
@@ -116,6 +123,9 @@ class CallbackNotifier:
             timeout_ms=timeout_ms,
             container_id=container_id,
             container_name=container_name,
+            project=project,
+            task_id=task_id,
+            task_name=task_name,
         )
         if self._on_notify:
             self._on_notify(notification)

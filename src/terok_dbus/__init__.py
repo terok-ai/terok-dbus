@@ -8,6 +8,7 @@ import logging
 from dbus_fast import DBusError
 
 from terok_dbus._callback import CallbackNotifier, Notification
+from terok_dbus._identity import ContainerIdentity
 from terok_dbus._interfaces import (
     CLEARANCE_BUS_NAME,
     CLEARANCE_INTERFACE_NAME,
@@ -20,18 +21,19 @@ from terok_dbus._interfaces import (
 )
 from terok_dbus._notifier import DbusNotifier
 from terok_dbus._null import NullNotifier
-from terok_dbus._podman import PodmanContainerNameResolver
+from terok_dbus._podman import PodmanIdentityResolver
 from terok_dbus._protocol import Notifier
 from terok_dbus._subscriber import EventSubscriber
 
 __all__ = [
     "CallbackNotifier",
+    "ContainerIdentity",
     "DbusNotifier",
     "EventSubscriber",
     "Notification",
     "NullNotifier",
     "Notifier",
-    "PodmanContainerNameResolver",
+    "PodmanIdentityResolver",
     "create_notifier",
     "CLEARANCE_BUS_NAME",
     "CLEARANCE_INTERFACE_NAME",

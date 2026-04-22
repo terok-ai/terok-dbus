@@ -12,6 +12,7 @@ import pytest
 from dbus_fast import MessageType
 from dbus_fast.message import Message
 
+from terok_dbus._identity import ContainerIdentity
 from terok_dbus._interfaces import (
     CLEARANCE_BUS_NAME,
     CLEARANCE_INTERFACE_NAME,
@@ -426,8 +427,101 @@ class TestShieldSignals:
         notifier.notify.assert_awaited_once()
         call = notifier.notify.await_args
         assert call.args[0].startswith("Shield up:")
-        assert call.kwargs["hints"] is _HINT_LIFECYCLE
+        # Confirmation (normal + transient), not LIFECYCLE — GNOME skips
+        # the popup entirely at urgency=0, hiding a state change the
+        # operator just caused.
+        assert call.kwargs["hints"] is _HINT_CONFIRMATION
         assert call.kwargs["timeout_ms"] == -1
+
+
+class TestTaskIdentityRendering:
+    """Body + kwargs surface the task triple for terok-orchestrated containers.
+
+    When the resolver returns an identity with ``project`` + ``task_id``
+    populated, the notification body's first line switches from
+    ``Container: …`` to ``Task: project/task_id · task_name``, and the
+    five structured kwargs flow to the ``CallbackNotifier`` so the TUI
+    can render them however it likes.  Empty project/task_id falls back
+    to the existing container-name display — standalone executor runs
+    shouldn't change shape.
+    """
+
+    _PROJECT = "alpaka3"
+    _TASK_ID = "z71dr"
+    _TASK_NAME = "fish-benchmark"
+    _CONTAINER_NAME = "alpaka3-cli-z71dr"
+
+    def _terok_identity(self) -> ContainerIdentity:
+        return ContainerIdentity(
+            container_name=self._CONTAINER_NAME,
+            project=self._PROJECT,
+            task_id=self._TASK_ID,
+            task_name=self._TASK_NAME,
+        )
+
+    @pytest.mark.asyncio
+    async def test_terok_identity_renders_task_triple_in_body(
+        self, mock_notifier: AsyncMock
+    ) -> None:
+        sub, _ = _seed_subscriber(mock_notifier)
+        sub._identity_resolver = MagicMock(return_value=self._terok_identity())
+
+        sub._on_message(_connection_blocked_signal())
+        for _ in range(3):
+            await asyncio.sleep(0.01)
+
+        call = mock_notifier.notify.await_args
+        body_first_line = call.args[1].split("\n", 1)[0]
+        assert body_first_line == f"Task: {self._PROJECT}/{self._TASK_ID} · {self._TASK_NAME}"
+
+    @pytest.mark.asyncio
+    async def test_terok_identity_surfaces_as_notify_kwargs(self, mock_notifier: AsyncMock) -> None:
+        sub, _ = _seed_subscriber(mock_notifier)
+        sub._identity_resolver = MagicMock(return_value=self._terok_identity())
+
+        sub._on_message(_connection_blocked_signal())
+        for _ in range(3):
+            await asyncio.sleep(0.01)
+
+        kwargs = mock_notifier.notify.await_args.kwargs
+        assert kwargs["container_name"] == self._CONTAINER_NAME
+        assert kwargs["project"] == self._PROJECT
+        assert kwargs["task_id"] == self._TASK_ID
+        assert kwargs["task_name"] == self._TASK_NAME
+
+    @pytest.mark.asyncio
+    async def test_standalone_identity_falls_back_to_container_line(
+        self, mock_notifier: AsyncMock
+    ) -> None:
+        """Non-terok containers keep the ``Container: name`` body shape."""
+        sub, _ = _seed_subscriber(mock_notifier)
+        sub._identity_resolver = MagicMock(return_value=ContainerIdentity(container_name="ad-hoc"))
+
+        sub._on_message(_connection_blocked_signal())
+        for _ in range(3):
+            await asyncio.sleep(0.01)
+
+        body_first_line = mock_notifier.notify.await_args.args[1].split("\n", 1)[0]
+        assert body_first_line == "Container: ad-hoc"
+
+    @pytest.mark.asyncio
+    async def test_missing_task_name_still_shows_task_line(self, mock_notifier: AsyncMock) -> None:
+        """Rename in flight or YAML unreadable → task triple without trailing name."""
+        sub, _ = _seed_subscriber(mock_notifier)
+        sub._identity_resolver = MagicMock(
+            return_value=ContainerIdentity(
+                container_name=self._CONTAINER_NAME,
+                project=self._PROJECT,
+                task_id=self._TASK_ID,
+            )
+        )
+
+        sub._on_message(_connection_blocked_signal())
+        for _ in range(3):
+            await asyncio.sleep(0.01)
+
+        body_first_line = mock_notifier.notify.await_args.args[1].split("\n", 1)[0]
+        assert body_first_line == f"Task: {self._PROJECT}/{self._TASK_ID}"
 
 
 # ── Verdict routing ───────────────────────────────────────────────────
@@ -759,44 +853,45 @@ class TestSendVerdict:
 # ── Name resolver off-thread + error handling ─────────────────────────
 
 
-class TestResolveContainerName:
-    """``_resolve_container_name`` offloads the resolver and fails soft."""
+class TestResolveIdentity:
+    """``_resolve_identity`` offloads the resolver and fails soft."""
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_resolver_absent(self, mock_notifier: AsyncMock) -> None:
-        """No injected resolver → empty string, no thread spawned."""
+        """No injected resolver → empty identity, no thread spawned."""
         sub = EventSubscriber(mock_notifier, bus=_mock_bus())
-        assert await sub._resolve_container_name(CONTAINER) == ""
+        assert await sub._resolve_identity(CONTAINER) == ContainerIdentity()
 
     @pytest.mark.asyncio
     async def test_returns_empty_on_empty_container(self, mock_notifier: AsyncMock) -> None:
         """Defensive short-circuit for empty container IDs from bad wire data."""
-        resolver = MagicMock(return_value="should-not-be-called")
-        sub = EventSubscriber(mock_notifier, bus=_mock_bus(), name_resolver=resolver)
-        assert await sub._resolve_container_name("") == ""
+        resolver = MagicMock(return_value=ContainerIdentity(container_name="should-not-be-called"))
+        sub = EventSubscriber(mock_notifier, bus=_mock_bus(), identity_resolver=resolver)
+        assert await sub._resolve_identity("") == ContainerIdentity()
         resolver.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_resolves_via_to_thread(self, mock_notifier: AsyncMock) -> None:
         """Resolver runs through ``asyncio.to_thread`` so the loop stays free."""
-        resolver = MagicMock(return_value="my-task")
-        sub = EventSubscriber(mock_notifier, bus=_mock_bus(), name_resolver=resolver)
+        expected = ContainerIdentity(container_name="my-task")
+        resolver = MagicMock(return_value=expected)
+        sub = EventSubscriber(mock_notifier, bus=_mock_bus(), identity_resolver=resolver)
         with patch("terok_dbus._subscriber.asyncio.to_thread") as to_thread:
 
             async def fake(func, arg):
                 return func(arg)
 
             to_thread.side_effect = fake
-            result = await sub._resolve_container_name(CONTAINER)
-        assert result == "my-task"
+            result = await sub._resolve_identity(CONTAINER)
+        assert result == expected
         to_thread.assert_awaited_once_with(resolver, CONTAINER)
 
     @pytest.mark.asyncio
     async def test_returns_empty_on_resolver_exception(self, mock_notifier: AsyncMock) -> None:
         """A resolver that raises can't knock notifications off the rails."""
         resolver = MagicMock(side_effect=RuntimeError("podman unreachable"))
-        sub = EventSubscriber(mock_notifier, bus=_mock_bus(), name_resolver=resolver)
-        assert await sub._resolve_container_name(CONTAINER) == ""
+        sub = EventSubscriber(mock_notifier, bus=_mock_bus(), identity_resolver=resolver)
+        assert await sub._resolve_identity(CONTAINER) == ContainerIdentity()
 
 
 # ── Clearance1 routing (legacy path) ──────────────────────────────────
