@@ -139,6 +139,26 @@ class ClearanceClient:
                     _log.exception("event callback raised for %r", event)
         except asyncio.CancelledError:
             raise
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, EOFError) as exc:
+            # Hub went away — expected on ``systemctl restart terok-dbus``
+            # or a crashed-and-restarted hub.  Consumers watching
+            # :meth:`wait_closed` react (the notifier exits so systemd
+            # reconnects on restart); there's nothing to panic about here.
+            if not self._stopping:
+                _log.info("clearance event stream ended: %s", exc)
         except Exception:
             if not self._stopping:
                 _log.exception("clearance event stream died")
+
+    async def wait_closed(self) -> None:
+        """Return when the Subscribe() stream task has ended.
+
+        Lets consumers race the shutdown-signal wait against a hub
+        disconnect — :func:`asyncio.wait` picks whichever fires first.
+        Swallowing the task's own exception is fine here; ``_run_stream``
+        already logged at the right severity.
+        """
+        if self._stream_task is None:
+            return
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await self._stream_task

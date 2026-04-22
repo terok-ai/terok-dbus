@@ -193,6 +193,16 @@ class EventSubscriber:
         self._pending.clear()
         self._shield_down_notifs.clear()
 
+    async def wait_closed(self) -> None:
+        """Return when the underlying client's event stream has ended.
+
+        Lets the notifier race ``wait_for_shutdown_signal`` against the
+        hub going away, so ``systemctl restart terok-dbus`` triggers a
+        clean notifier exit + systemd restart rather than leaving us
+        silently subscribed to a dead socket.
+        """
+        await self._client.wait_closed()
+
     # ── Event dispatch ────────────────────────────────────────────────
 
     async def _on_event(self, event: ClearanceEvent) -> None:
