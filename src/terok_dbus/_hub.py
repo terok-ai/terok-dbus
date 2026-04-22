@@ -155,10 +155,19 @@ class ClearanceHub:
     async def stop(self) -> None:
         """Close the varlink server + ingester; drain subscriber queues."""
         if self._varlink_server is not None:
+            # ``close()`` on its own only stops accepting new connections;
+            # existing subscribers would sit forever in ``queue.get()`` and
+            # ``wait_closed`` would hang until the timeout fires.
+            # ``close_clients()`` walks the live transports and closes them,
+            # which makes the server-side ``_call_async_method_more``'s
+            # next ``send_reply`` fail with OSError — that in turn calls
+            # ``generator.aclose()`` on the subscriber, propagating cleanly
+            # through to our ``finally`` block.  This avoids the
+            # assertion asyncvarlink fires when a streaming generator
+            # ends "normally" with ``continues=True`` on the last reply.
             self._varlink_server.close()
-            # ``wait_closed`` can block forever if a subscriber connection
-            # is mid-generator — cap it so a flaky client doesn't burn
-            # systemd's stop-sigterm deadline.
+            with contextlib.suppress(AttributeError):
+                self._varlink_server.close_clients()
             with contextlib.suppress(TimeoutError, Exception):
                 await asyncio.wait_for(self._varlink_server.wait_closed(), timeout=1.0)
             self._varlink_server = None
@@ -166,10 +175,6 @@ class ClearanceHub:
             with contextlib.suppress(Exception):
                 await self._ingester.stop()
             self._ingester = None
-        # Wake every subscriber so its generator exits promptly rather than
-        # leaking a hanging task into the event loop.
-        for queue in list(self._subscribers):
-            queue.put_nowait(_SENTINEL)
         self._subscribers.clear()
         self._live_verdicts.clear()
 
@@ -234,15 +239,21 @@ class ClearanceHub:
     # ── varlink method implementations ─────────────────────────────────
 
     async def _subscribe(self) -> AsyncIterator[ClearanceEvent]:
-        """Create a per-connection queue and yield events until the client goes."""
+        """Create a per-connection queue and yield events until the client goes.
+
+        The generator is never expected to terminate on its own — ending
+        "normally" with ``delay_generator=False`` trips the asyncvarlink
+        server-protocol ``assert not continues`` because every yield
+        leaves ``continues=True``.  Shutdown runs through
+        :meth:`stop`'s ``close_clients()`` instead, which triggers a
+        send_reply OSError and a clean ``generator.aclose()`` into the
+        ``finally`` block below.
+        """
         queue: asyncio.Queue[ClearanceEvent] = asyncio.Queue(maxsize=_SUBSCRIBER_QUEUE_DEPTH)
         self._subscribers.add(queue)
         try:
             while True:
-                event = await queue.get()
-                if event is _SENTINEL:
-                    return
-                yield event
+                yield await queue.get()
         finally:
             self._subscribers.discard(queue)
 
@@ -330,13 +341,6 @@ class ClearanceHub:
 
 
 # ── module-level helpers ───────────────────────────────────────────────
-
-
-class _Sentinel:
-    """Marker pushed onto subscriber queues to cleanly exit their generators."""
-
-
-_SENTINEL = _Sentinel()
 
 
 def _translate_reader_event(wire_type: str, raw: dict) -> ClearanceEvent:
