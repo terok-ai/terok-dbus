@@ -266,6 +266,19 @@ class ClearanceHub:
         :meth:`stop`'s ``close_clients()`` instead, which triggers a
         send_reply OSError and a clean ``generator.aclose()`` into the
         ``finally`` block below.
+
+        Known-benign shutdown noise: on Python 3.14 the stop path can
+        still log ``ERROR asyncio: Exception in callback
+        VarlinkServerProtocol._on_receiver_completes(): CancelledError``.
+        That's an asyncvarlink × 3.14 interaction — asyncio.run cancels
+        the in-flight handler task, ``CancelledError`` propagates
+        through our ``yield await queue.get()``, asyncvarlink's
+        completion callback then does ``call_fut.exception()`` which
+        in 3.14 re-raises on a cancelled future (older Pythons
+        returned ``None``).  Purely cosmetic; the hub has already
+        stopped cleanly by the time it logs.  Revisit once
+        asyncvarlink wraps that ``exception()`` call in
+        ``try/except CancelledError``.
         """
         queue: asyncio.Queue[ClearanceEvent] = asyncio.Queue(maxsize=_SUBSCRIBER_QUEUE_DEPTH)
         self._subscribers.add(queue)
