@@ -61,9 +61,27 @@ class ClearanceClient:
         self._stream_task: asyncio.Task[None] | None = None
         self._stopping = False
 
+    #: Cap on the reconnect back-off.  Keeps latency-after-hub-restart
+    #: bounded for the TUI + notifier while still damping a flapping hub.
+    _MAX_RECONNECT_BACKOFF_S = 10.0
+
     async def start(self, on_event: EventCallback) -> None:
-        """Open both connections and begin relaying events to *on_event*."""
+        """Open both connections and begin relaying events to *on_event*.
+
+        The initial connect is awaited synchronously so callers see
+        ``start()`` return only after the subscription is live — a
+        hub that's down at startup still propagates as an exception.
+        Subsequent drops are handled by :meth:`_run_stream`'s internal
+        reconnect loop so long-running consumers (TUI, notifier)
+        survive a ``systemctl restart terok-dbus`` without
+        restarting themselves.
+        """
         self._on_event = on_event
+        await self._connect()
+        self._stream_task = asyncio.create_task(self._run_stream())
+
+    async def _connect(self) -> None:
+        """Open both varlink connections and build proxies."""
         self._sub_transport, sub_proto = await connect_unix_varlink(
             VarlinkClientProtocol, str(self._socket_path)
         )
@@ -72,7 +90,17 @@ class ClearanceClient:
         )
         self._sub_proxy = sub_proto.make_proxy(Clearance1Interface)
         self._rpc_proxy = rpc_proto.make_proxy(Clearance1Interface)
-        self._stream_task = asyncio.create_task(self._run_stream())
+
+    def _close_transports(self) -> None:
+        """Drop both transports + proxies; next I/O forces a reconnect."""
+        for t in (self._sub_transport, self._rpc_transport):
+            if t is not None:
+                with contextlib.suppress(Exception):
+                    t.close()
+        self._sub_transport = None
+        self._rpc_transport = None
+        self._sub_proxy = None
+        self._rpc_proxy = None
 
     async def stop(self) -> None:
         """Close both connections and await the stream task."""
@@ -82,14 +110,7 @@ class ClearanceClient:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await self._stream_task
             self._stream_task = None
-        for t in (self._sub_transport, self._rpc_transport):
-            if t is not None:
-                with contextlib.suppress(Exception):
-                    t.close()
-        self._sub_transport = None
-        self._rpc_transport = None
-        self._sub_proxy = None
-        self._rpc_proxy = None
+        self._close_transports()
 
     async def verdict(self, container: str, request_id: str, dest: str, action: str) -> bool:
         """Apply *action* (``allow`` / ``deny``) to *dest* via the hub's ``Verdict`` RPC.
@@ -123,32 +144,63 @@ class ClearanceClient:
         return bool(reply.get("ok", False))
 
     async def _run_stream(self) -> None:
-        """Pump Subscribe() events into the user callback."""
-        # ``assert`` gets stripped under ``python -O``; use an explicit
-        # guard so the invariant still fires in production builds.
+        """Pump Subscribe() events into the user callback, reconnecting on drop.
+
+        On ``systemctl restart terok-dbus`` the stream iterator raises
+        ``ConnectionResetError`` (or the socket-closed sibling errors);
+        sleep with exponential back-off, reopen both transports, and
+        resume — TUI / notifier consumers don't have to restart.
+
+        Events that occur during the disconnected window are lost:
+        the hub holds no per-subscriber replay buffer.  Snapshot-style
+        reconciliation (re-query container state from podman after
+        reconnect) belongs to individual consumers.
+        """
         if self._sub_proxy is None:
             raise RuntimeError("ClearanceClient._run_stream called before connect()")
-        try:
-            async for reply in self._sub_proxy.Subscribe():
-                event = reply["event"]
-                if self._on_event is None:
-                    continue
-                try:
-                    await self._on_event(event)
-                except Exception:
-                    _log.exception("event callback raised for %r", event)
-        except asyncio.CancelledError:
-            raise
-        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, EOFError) as exc:
-            # Hub went away — expected on ``systemctl restart terok-dbus``
-            # or a crashed-and-restarted hub.  Consumers watching
-            # :meth:`wait_closed` react (the notifier exits so systemd
-            # reconnects on restart); there's nothing to panic about here.
-            if not self._stopping:
-                _log.info("clearance event stream ended: %s", exc)
-        except Exception:
-            if not self._stopping:
-                _log.exception("clearance event stream died")
+        backoff = 1.0
+        while not self._stopping:
+            try:
+                async for reply in self._sub_proxy.Subscribe():
+                    event = reply["event"]
+                    if self._on_event is None:
+                        continue
+                    try:
+                        await self._on_event(event)
+                    except Exception:
+                        _log.exception("event callback raised for %r", event)
+                # Stream ended without raising — treat like a disconnect
+                # unless we're being stopped explicitly.
+            except asyncio.CancelledError:
+                raise
+            except (
+                ConnectionResetError,
+                ConnectionAbortedError,
+                BrokenPipeError,
+                EOFError,
+                OSError,
+            ) as exc:
+                if self._stopping:
+                    return
+                _log.info("clearance event stream ended (%s); reconnecting in %.1fs", exc, backoff)
+            except Exception:
+                if self._stopping:
+                    return
+                _log.exception("clearance event stream died; reconnecting in %.1fs", backoff)
+            if self._stopping:
+                return
+            self._close_transports()
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, self._MAX_RECONNECT_BACKOFF_S)
+            try:
+                await self._connect()
+                _log.info("clearance client reconnected to hub")
+                backoff = 1.0
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 — retry any connect failure
+                _log.info("hub reconnect failed (%s); retrying", exc)
+                # Loop around; the next ``await asyncio.sleep(backoff)`` throttles.
 
     async def wait_closed(self) -> None:
         """Return when the Subscribe() stream task has ended.
