@@ -34,7 +34,6 @@ YAML in place.  Each resolver call reads the current value.
 from __future__ import annotations
 
 import logging
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -98,11 +97,15 @@ class IdentityResolver:
             return ContainerIdentity()
         project = info.annotations.get(ANNOTATION_PROJECT, "")
         task_id = info.annotations.get(ANNOTATION_TASK, "")
-        base = ContainerIdentity(container_name=info.name, project=project, task_id=task_id)
         if not (project and task_id):
-            return base
+            return ContainerIdentity(container_name=info.name, project=project, task_id=task_id)
         meta_path = info.annotations.get(ANNOTATION_TASK_META_PATH, "")
-        return replace(base, task_name=_read_task_name(meta_path) if meta_path else "")
+        return ContainerIdentity(
+            container_name=info.name,
+            project=project,
+            task_id=task_id,
+            task_name=_read_task_name(meta_path) if meta_path else "",
+        )
 
 
 def _read_task_name(meta_path: str) -> str:
