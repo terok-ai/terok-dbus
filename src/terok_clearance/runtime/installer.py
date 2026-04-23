@@ -31,16 +31,18 @@ import subprocess  # nosec B404
 from importlib import resources as importlib_resources
 from pathlib import Path
 
-#: Unit files this installer owns.  Both are rendered from templates
-#: that live under ``resources/systemd/``; ``{{UNIT_VERSION}}`` +
-#: ``{{BIN}}`` substitution happens at render time.
+#: Unit files this installer owns.  Each is rendered from a template
+#: under ``resources/systemd/``; ``{{UNIT_VERSION}}`` + ``{{BIN}}``
+#: substitution happens at render time.
 HUB_UNIT_NAME = "terok-clearance-hub.service"
 VERDICT_UNIT_NAME = "terok-clearance-verdict.service"
+NOTIFIER_UNIT_NAME = "terok-clearance-notifier.service"
 
 #: Name of the pre-split monolithic unit we migrate away from.
 _LEGACY_UNIT_NAME = "terok-dbus.service"
 
-#: ``(unit_filename, version_marker_prefix)`` pairs.  The subcommand
+#: ``(unit_filename, version_marker_prefix)`` pairs for the hub+verdict
+#: pair installed by :func:`install_service`.  The subcommand
 #: (``serve`` vs ``serve-verdict``) is baked into each template's
 #: ``ExecStart={{BIN}} <subcommand>`` line, so the installer only
 #: substitutes ``{{BIN}}`` + ``{{UNIT_VERSION}}``.
@@ -48,14 +50,28 @@ _HUB = (HUB_UNIT_NAME, "# terok-clearance-hub-version:")
 _VERDICT = (VERDICT_UNIT_NAME, "# terok-clearance-verdict-version:")
 _UNITS = (_HUB, _VERDICT)
 
-_UNIT_VERSION = 1
-"""Bump when either unit template's semantics change.
+#: Version marker pair for the notifier unit, installed separately
+#: via :func:`install_notifier_service` because the notifier runs a
+#: different launcher (``python -m terok_clearance.notifier.app``)
+#: than the hub/verdict pair.
+_NOTIFIER = (NOTIFIER_UNIT_NAME, "# terok-clearance-notifier-version:")
 
-The marker is rendered into each unit at install time so
-:func:`check_units_outdated` can tell a current install from an older
-generation — any installed unit without a marker (the pre-split
-monolithic ``terok-dbus.service``) reads as ``None`` and is surfaced
-as stale.
+_PAIR_UNIT_VERSION = 1
+"""Version stamp shared by hub + verdict units (they are installed together).
+
+Bump when either of those two templates changes semantics — e.g.
+hardening directives, socket paths, argv shape.  ``_NOTIFIER_UNIT_VERSION``
+stays untouched so notifier-only edits don't falsely report hub/verdict
+as stale, and vice versa.
+"""
+
+_NOTIFIER_UNIT_VERSION = 1
+"""Version stamp for the standalone notifier unit.
+
+Kept independent of the hub/verdict pair so each install target can
+evolve on its own cadence — the three units ship different ExecStart
+shapes, different hardening profiles, and different dependencies on
+the session bus.
 """
 
 # Backwards-compatible alias — the unit name the legacy installer
@@ -88,7 +104,7 @@ def install_service(bin_path: Path | list[str]) -> tuple[Path, Path]:
     paths: list[Path] = []
     for unit_name, _marker in _UNITS:
         template = _read_template(unit_name)
-        rendered = template.replace("{{UNIT_VERSION}}", str(_UNIT_VERSION)).replace(
+        rendered = template.replace("{{UNIT_VERSION}}", str(_PAIR_UNIT_VERSION)).replace(
             "{{BIN}}", bin_rendered
         )
         dest = dest_dir / unit_name
@@ -109,6 +125,44 @@ def uninstall_service() -> None:
     """
     for name in (HUB_UNIT_NAME, VERDICT_UNIT_NAME, _LEGACY_UNIT_NAME):
         _disable_and_unlink(name)
+    _daemon_reload()
+
+
+def install_notifier_service(bin_path: Path | list[str]) -> Path:
+    """Render + write the notifier unit into the user systemd directory.
+
+    Paired with :func:`install_service`: headless hosts that installed
+    the hub + verdict pair can opt into the desktop notifier later by
+    calling only this function.  Daemon-reloads once at the end.
+
+    Args:
+        bin_path: ``Path`` to the notifier launcher, or a ``list[str]``
+            argv (the module-fallback form, e.g.
+            ``[sys.executable, "-m", "terok_clearance.notifier.app"]``).
+
+    Returns:
+        The on-disk path of the written unit file.
+    """
+    bin_rendered = _render_exec_start(bin_path)
+    dest_dir = _user_systemd_dir()
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    template = _read_template(NOTIFIER_UNIT_NAME)
+    rendered = template.replace("{{UNIT_VERSION}}", str(_NOTIFIER_UNIT_VERSION)).replace(
+        "{{BIN}}", bin_rendered
+    )
+    dest = dest_dir / NOTIFIER_UNIT_NAME
+    dest.write_text(rendered)
+    _daemon_reload()
+    return dest
+
+
+def uninstall_notifier_service() -> None:
+    """Disable + unlink the notifier unit; daemon-reload once.
+
+    Symmetric teardown for :func:`install_notifier_service`.  Soft-fail
+    on every step so a half-installed tree still ends up clean.
+    """
+    _disable_and_unlink(NOTIFIER_UNIT_NAME)
     _daemon_reload()
 
 
@@ -241,23 +295,39 @@ def _version_for(unit_name: str, marker_prefix: str) -> int | None:
     return None
 
 
+#: Phrasing tail appended to every drift message — frontend-agnostic
+#: so clearance doesn't have to guess which CLI the operator uses to
+#: reinstall (``terok setup``, ``terok-executor setup``, a
+#: ``terok-clearance`` verb when one ships).  "your clearance setup
+#: command" is vague by design.
+_RERUN_HINT = "rerun your clearance setup command"
+
+
 def check_units_outdated() -> str | None:
     """Return a one-line drift warning if any installed unit is stale, else ``None``.
 
-    Checks both the hub and the verdict units.  ``None`` is returned
-    when neither is installed (headless host, or ``terok setup``
-    hasn't run yet); a one-sided pair (hub present, verdict absent or
-    vice-versa) is reported as stale so the operator is prompted to
-    restore the pair.  A legacy ``terok-dbus.service`` on disk counts
-    as "stale" too so the operator is prompted to rerun setup and get
-    the split pair.
+    Checks hub + verdict together (they're installed as a pair by
+    :func:`install_service`) plus the notifier independently (headless
+    hosts may install it later, or not at all).  ``None`` is returned
+    when neither pair nor notifier is installed (headless host, or
+    no setup command has run yet); a one-sided hub/verdict pair is
+    reported as stale so the operator is prompted to restore it.  A
+    legacy ``terok-dbus.service`` on disk counts as "stale" so the
+    operator is prompted to rerun setup and get the split pair.
     """
     legacy = _user_systemd_dir() / _LEGACY_UNIT_NAME
     if legacy.is_file():
         return (
             f"{_LEGACY_UNIT_NAME} is from a pre-split release — "
-            "rerun `terok setup` to migrate to the hub/verdict pair."
+            f"{_RERUN_HINT} to migrate to the hub/verdict pair."
         )
+    if (verdict := _check_pair_outdated()) is not None:
+        return verdict
+    return _check_notifier_outdated()
+
+
+def _check_pair_outdated() -> str | None:
+    """Report stale or half-installed hub+verdict pair, or ``None`` when healthy."""
     present: dict[str, bool] = {}
     for unit_name, marker in _UNITS:
         path = _user_systemd_dir() / unit_name
@@ -265,17 +335,30 @@ def check_units_outdated() -> str | None:
             present[unit_name] = False
             continue
         present[unit_name] = True
-        installed = _version_for(unit_name, marker)
-        if installed is None or installed < _UNIT_VERSION:
-            installed_label = "unversioned" if installed is None else f"v{installed}"
-            return (
-                f"{unit_name} is outdated "
-                f"(installed {installed_label}, expected v{_UNIT_VERSION}) — rerun `terok setup`."
-            )
+        if (warning := _drift_warning(unit_name, marker, _PAIR_UNIT_VERSION)) is not None:
+            return warning
     if any(present.values()) and not all(present.values()):
         missing = ", ".join(name for name, is_present in present.items() if not is_present)
+        return f"half-installed: missing {missing} — {_RERUN_HINT} to restore the hub/verdict pair."
+    return None
+
+
+def _check_notifier_outdated() -> str | None:
+    """Report stale notifier unit, or ``None`` when absent or current."""
+    unit_name, marker = _NOTIFIER
+    path = _user_systemd_dir() / unit_name
+    if not path.is_file():
+        return None
+    return _drift_warning(unit_name, marker, _NOTIFIER_UNIT_VERSION)
+
+
+def _drift_warning(unit_name: str, marker: str, expected: int) -> str | None:
+    """Return a stale-unit warning for *unit_name* vs *expected*, or ``None`` if current."""
+    installed = _version_for(unit_name, marker)
+    if installed is None or installed < expected:
+        installed_label = "unversioned" if installed is None else f"v{installed}"
         return (
-            f"half-installed: missing {missing} — rerun `terok setup` "
-            "to restore the hub/verdict pair."
+            f"{unit_name} is outdated "
+            f"(installed {installed_label}, expected v{expected}) — {_RERUN_HINT}."
         )
     return None

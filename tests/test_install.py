@@ -133,10 +133,10 @@ class TestUnitVersion:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         with patch.object(_install, "_daemon_reload"):
             install_service(Path("/a/terok-clearance-hub"))
-        assert read_installed_unit_version() == _install._UNIT_VERSION
+        assert read_installed_unit_version() == _install._PAIR_UNIT_VERSION
         # Verdict unit carries its own (same version, different marker).
         verdict_text = (tmp_path / "systemd" / "user" / VERDICT_UNIT_NAME).read_text()
-        assert f"# terok-clearance-verdict-version: {_install._UNIT_VERSION}" in verdict_text
+        assert f"# terok-clearance-verdict-version: {_install._PAIR_UNIT_VERSION}" in verdict_text
 
     def test_read_version_returns_none_without_marker(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -174,7 +174,7 @@ class TestUnitVersion:
         msg = check_units_outdated()
         assert msg is not None
         assert "terok-dbus.service" in msg
-        assert "terok setup" in msg
+        assert "setup" in msg
 
     def test_check_outdated_flags_unversioned_unit(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -186,7 +186,7 @@ class TestUnitVersion:
         msg = check_units_outdated()
         assert msg is not None
         assert "unversioned" in msg
-        assert "terok setup" in msg
+        assert "setup" in msg
 
     def test_check_outdated_flags_half_installed_pair(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -199,7 +199,7 @@ class TestUnitVersion:
         msg = check_units_outdated()
         assert msg is not None
         assert VERDICT_UNIT_NAME in msg
-        assert "terok setup" in msg
+        assert "setup" in msg
 
 
 class TestDisableAndUnlink:

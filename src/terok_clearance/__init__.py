@@ -17,9 +17,12 @@ Two unrelated wire formats live under this one package:
 """
 
 from terok_clearance.client.client import ClearanceClient
+from terok_clearance.client.identity_resolver import IdentityResolver
 from terok_clearance.client.subscriber import EventSubscriber
+from terok_clearance.domain.container_info import ContainerInfo
 from terok_clearance.domain.events import ClearanceEvent
 from terok_clearance.domain.identity import ContainerIdentity
+from terok_clearance.domain.inspector import ContainerInspector, NullInspector
 from terok_clearance.hub.server import ClearanceHub, serve
 from terok_clearance.notifications.callback import CallbackNotifier, Notification
 from terok_clearance.notifications.desktop import DbusNotifier
@@ -28,7 +31,9 @@ from terok_clearance.notifications.null import NullNotifier
 from terok_clearance.notifications.protocol import Notifier
 from terok_clearance.runtime.installer import (
     check_units_outdated,
+    install_notifier_service,
     read_installed_unit_version,
+    uninstall_notifier_service,
     uninstall_service,
 )
 from terok_clearance.runtime.service import configure_logging, wait_for_shutdown_signal
@@ -49,11 +54,15 @@ __all__ = [
     "ClearanceEvent",
     "ClearanceHub",
     "ContainerIdentity",
+    "ContainerInfo",
+    "ContainerInspector",
     "DbusNotifier",
     "EventSubscriber",
+    "IdentityResolver",
     "InvalidAction",
     "Notification",
     "Notifier",
+    "NullInspector",
     "NullNotifier",
     "ShieldCliFailed",
     "UnknownRequest",
@@ -62,8 +71,10 @@ __all__ = [
     "configure_logging",
     "create_notifier",
     "default_clearance_socket_path",
+    "install_notifier_service",
     "read_installed_unit_version",
     "serve",
+    "uninstall_notifier_service",
     "uninstall_service",
     "wait_for_shutdown_signal",
 ]

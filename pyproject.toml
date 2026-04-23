@@ -4,7 +4,7 @@ build-backend = "poetry_dynamic_versioning.backend"
 
 [tool.poetry]
 name = "terok-clearance"
-version = "0.6.1"
+version = "0.6.2"
 description = "Shield clearance and desktop notifications for terok"
 readme = "README.md"
 license = "Apache-2.0"
@@ -26,6 +26,7 @@ packages = [
 python = ">=3.12,<4.0"
 dbus-fast = ">=2.0,<5.0"
 asyncvarlink = "^0.3.1"
+pyyaml = "^6.0"
 
 [tool.poetry.group.dev.dependencies]
 ruff = ">=0.15.10"
@@ -54,6 +55,7 @@ mkdocs-terok = {url = "https://github.com/terok-ai/mkdocs-terok/releases/downloa
 
 [tool.poetry.scripts]
 terok-clearance-hub = "terok_clearance.cli.main:main"
+terok-clearance-notifier = "terok_clearance.notifier.app:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -57,6 +57,26 @@ path = "terok_clearance.domain.identity"
 layer = "domain"
 depends_on = []
 
+# Container-inspection facts — pure data, mirrors what a runtime
+# inspector returns.  Built by the concrete inspector (shipped by
+# terok-sandbox); consumed by ``client.identity_resolver`` and anyone
+# else that cares.
+[[modules]]
+path = "terok_clearance.domain.container_info"
+layer = "domain"
+depends_on = []
+
+# Runtime-neutral inspector protocol + ``NullInspector`` fallback —
+# lets clearance stay free of any specific runtime (podman, krun,
+# etc.); the concrete implementation lives in the sandbox package
+# where runtime selection is owned.
+[[modules]]
+path = "terok_clearance.domain.inspector"
+layer = "domain"
+depends_on = [
+    "terok_clearance.domain.container_info",
+]
+
 
 # ── Wire layer ──────────────────────────────────────────────────────
 
@@ -172,6 +192,15 @@ depends_on = [
     # tach.ignore_type_checking_imports skips it, so it's not in deps.
 ]
 
+# Task-aware identity resolution — composes an injected
+# ``ContainerInspector`` with the ``ai.terok.task_meta_path``
+# annotation data contract.  Resolver itself has no knowledge of
+# which runtime is in use.
+[[modules]]
+path = "terok_clearance.client.identity_resolver"
+layer = "infrastructure"
+depends_on = []
+
 # Runtime — deployment helpers.
 [[modules]]
 path = "terok_clearance.runtime.service"
@@ -182,6 +211,22 @@ depends_on = []
 path = "terok_clearance.runtime.installer"
 layer = "infrastructure"
 depends_on = []
+
+# Notifier daemon — subscribes to the hub, renders desktop popups.
+# Separate feature dir so its lifecycle is isolated from the hub/verdict
+# pair; installed by the runtime installer but runs in its own systemd
+# unit with its own crash radius.  Picks an inspector at startup via
+# a soft import from terok-sandbox (whichever runtime backend it
+# provides), falling back to ``NullInspector`` when standalone.
+[[modules]]
+path = "terok_clearance.notifier.app"
+layer = "infrastructure"
+depends_on = [
+    "terok_clearance.client.identity_resolver",
+    "terok_clearance.client.subscriber",
+    "terok_clearance.notifications.factory",
+    "terok_clearance.runtime.service",
+]
 
 
 # ── Interface layer ─────────────────────────────────────────────────
