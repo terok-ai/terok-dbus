@@ -18,11 +18,11 @@ Two unrelated wire formats live under this one package:
 
 from terok_clearance.client.client import ClearanceClient
 from terok_clearance.client.identity_resolver import IdentityResolver
-from terok_clearance.client.podman_inspector import PodmanInspector
 from terok_clearance.client.subscriber import EventSubscriber
 from terok_clearance.domain.container_info import ContainerInfo
 from terok_clearance.domain.events import ClearanceEvent
 from terok_clearance.domain.identity import ContainerIdentity
+from terok_clearance.domain.inspector import ContainerInspector, NullInspector
 from terok_clearance.hub.server import ClearanceHub, serve
 from terok_clearance.notifications.callback import CallbackNotifier, Notification
 from terok_clearance.notifications.desktop import DbusNotifier
@@ -55,14 +55,15 @@ __all__ = [
     "ClearanceHub",
     "ContainerIdentity",
     "ContainerInfo",
+    "ContainerInspector",
     "DbusNotifier",
     "EventSubscriber",
     "IdentityResolver",
     "InvalidAction",
     "Notification",
     "Notifier",
+    "NullInspector",
     "NullNotifier",
-    "PodmanInspector",
     "ShieldCliFailed",
     "UnknownRequest",
     "VerdictTupleMismatch",

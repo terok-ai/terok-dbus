@@ -40,8 +40,8 @@ from typing import Any
 
 import yaml
 
-from terok_clearance.client.podman_inspector import PodmanInspector
 from terok_clearance.domain.identity import ContainerIdentity
+from terok_clearance.domain.inspector import ContainerInspector
 
 _log = logging.getLogger(__name__)
 
@@ -70,9 +70,17 @@ class IdentityResolver:
       as above; the name field is left empty.
     """
 
-    def __init__(self, inspector: PodmanInspector | None = None) -> None:
-        """Configure the resolver with an inspector (default: a fresh one)."""
-        self._inspector = inspector or PodmanInspector()
+    def __init__(self, inspector: ContainerInspector) -> None:
+        """Configure the resolver with a :class:`ContainerInspector` implementation.
+
+        The inspector is required (no default) so the caller owns the
+        runtime-selection decision — clearance is runtime-neutral and
+        must not reach for a specific backend itself.  The notifier
+        entry point picks an appropriate implementation at startup
+        (terok-sandbox's ``create_container_inspector`` when available,
+        :class:`NullInspector` otherwise).
+        """
+        self._inspector = inspector
 
     def __call__(self, container_id: str) -> ContainerIdentity:
         """Return the task-aware identity for *container_id*."""

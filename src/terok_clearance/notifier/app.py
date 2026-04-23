@@ -24,6 +24,7 @@ import logging
 
 from terok_clearance.client.identity_resolver import IdentityResolver
 from terok_clearance.client.subscriber import EventSubscriber
+from terok_clearance.domain.inspector import ContainerInspector, NullInspector
 from terok_clearance.notifications.factory import create_notifier
 from terok_clearance.notifications.protocol import Notifier
 from terok_clearance.runtime.service import configure_logging, wait_for_shutdown_signal
@@ -40,7 +41,8 @@ async def run_notifier() -> None:
     """Run the notifier until SIGINT/SIGTERM."""
     configure_logging()
     notifier = await create_notifier("terok-clearance")
-    subscriber = EventSubscriber(notifier, identity_resolver=IdentityResolver())
+    inspector = _pick_inspector()
+    subscriber = EventSubscriber(notifier, identity_resolver=IdentityResolver(inspector))
     try:
         await subscriber.start()
     except Exception:
@@ -54,6 +56,27 @@ async def run_notifier() -> None:
         await wait_for_shutdown_signal()
     finally:
         await _teardown(subscriber, notifier)
+
+
+def _pick_inspector() -> ContainerInspector:
+    """Return the best available :class:`ContainerInspector` at boot time.
+
+    Runtime selection is a sandbox concern — if terok-sandbox is
+    installed, its ``create_container_inspector`` factory hands back an
+    implementation matched to the active runtime (podman today, krun
+    or something else tomorrow).  Without sandbox, clearance still
+    boots; notifications render with raw container ids via
+    :class:`NullInspector`.
+    """
+    try:
+        from terok_sandbox import create_container_inspector
+    except ImportError:
+        _log.info(
+            "terok_sandbox not importable — running with NullInspector; "
+            "notifications will carry container ids only"
+        )
+        return NullInspector()
+    return create_container_inspector()
 
 
 async def _teardown(subscriber: EventSubscriber, notifier: Notifier) -> None:

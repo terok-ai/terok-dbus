@@ -22,6 +22,7 @@ from terok_clearance.client.identity_resolver import (
     IdentityResolver,
 )
 from terok_clearance.domain.container_info import ContainerInfo
+from terok_clearance.domain.inspector import NullInspector
 
 
 def _fake_inspector(info: ContainerInfo) -> MagicMock:
@@ -132,3 +133,14 @@ class TestTaskMetaPathContract:
         assert resolver("c").task_name == "First"
         meta.write_text("name: Renamed\n", encoding="utf-8")
         assert resolver("c").task_name == "Renamed"
+
+
+class TestNullInspectorIntegration:
+    """:class:`NullInspector` is the graceful-degradation default for standalone hosts."""
+
+    def test_null_inspector_drives_empty_identity(self) -> None:
+        """No runtime-aware package installed → resolver returns empty identity."""
+        identity = IdentityResolver(inspector=NullInspector())("anything")
+        assert identity.container_name == ""
+        assert identity.project == ""
+        assert identity.task_name == ""

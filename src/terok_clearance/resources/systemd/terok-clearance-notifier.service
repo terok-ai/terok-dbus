@@ -27,7 +27,7 @@
 
 [Unit]
 Description=terok clearance desktop notifier
-Documentation=https://github.com/terok-ai/terok-dbus
+Documentation=https://github.com/terok-ai/terok-clearance
 # Needs the hub running before we can subscribe; ``Wants=`` (not
 # ``Requires=``) so a crashed hub restarts us with a clean retry rather
 # than forcibly tearing us down.
