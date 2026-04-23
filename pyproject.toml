@@ -4,7 +4,7 @@ build-backend = "poetry_dynamic_versioning.backend"
 
 [tool.poetry]
 name = "terok-clearance"
-version = "0.6.2"
+version = "0.6.3"
 description = "Shield clearance and desktop notifications for terok"
 readme = "README.md"
 license = "Apache-2.0"
