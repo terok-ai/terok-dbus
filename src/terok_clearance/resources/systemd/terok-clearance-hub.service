@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
+# SPDX-License-Identifier: Apache-2.0
+#
+# terok-clearance-hub-version: {{UNIT_VERSION}}
+#
+# systemd user service for the terok-clearance varlink hub.
+#
+# The hub owns the Clearance1 server socket, the reader ingester,
+# subscriber fan-out, and the ``request_id → (container, dest)``
+# authz binding.  Shield exec lives in the companion
+# ``terok-clearance-verdict.service`` — which is why *this* unit
+# can take full seccomp + mount-ns hardening.
+#
+# The {{BIN}} placeholder is resolved at install time by
+# ``terok-clearance-hub install-service`` (or ``terok setup``).
+#
+# Install:
+#   terok-clearance-hub install-service
+#
+# Logs:
+#   journalctl --user -u terok-clearance-hub -f
+
+[Unit]
+Description=terok clearance hub (varlink server + subscriber fan-out)
+Documentation=https://github.com/terok-ai/terok-clearance
+After=dbus.socket
+Requires=dbus.socket
+Wants=terok-clearance-verdict.service
+
+[Service]
+Type=simple
+ExecStart={{BIN}} serve
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=tmpfs
+RestrictAddressFamilies=AF_UNIX
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=default.target

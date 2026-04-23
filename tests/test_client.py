@@ -49,7 +49,7 @@ async def hub(private_runtime_dir: Path) -> AsyncIterator[ClearanceHub]:
         clearance_socket=private_runtime_dir / "clearance.sock",
         reader_socket=private_runtime_dir / "reader.sock",
     )
-    h._run_shield = _stub_shield_ok  # default: every verdict succeeds
+    h._verdict_client.apply = _stub_shield_ok  # default: every verdict succeeds
     await h.start()
     try:
         yield h
@@ -215,7 +215,7 @@ async def test_verdict_shield_failure_returns_false_and_fans_out_failure(
     hub: ClearanceHub, client: tuple[ClearanceClient, list]
 ) -> None:
     """Shield's non-zero exit raises on the caller AND fans out ok=False."""
-    hub._run_shield = _stub_shield_fail
+    hub._verdict_client.apply = _stub_shield_fail
     c, received = client
     _emit_reader_event(
         hub._reader_socket,

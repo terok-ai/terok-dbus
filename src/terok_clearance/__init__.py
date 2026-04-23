@@ -26,7 +26,11 @@ from terok_clearance.notifications.desktop import DbusNotifier
 from terok_clearance.notifications.factory import create_notifier
 from terok_clearance.notifications.null import NullNotifier
 from terok_clearance.notifications.protocol import Notifier
-from terok_clearance.runtime.installer import check_units_outdated, read_installed_unit_version
+from terok_clearance.runtime.installer import (
+    check_units_outdated,
+    read_installed_unit_version,
+    uninstall_service,
+)
 from terok_clearance.runtime.service import configure_logging, wait_for_shutdown_signal
 from terok_clearance.wire.errors import (
     InvalidAction,
@@ -60,6 +64,7 @@ __all__ = [
     "default_clearance_socket_path",
     "read_installed_unit_version",
     "serve",
+    "uninstall_service",
     "wait_for_shutdown_signal",
 ]
 

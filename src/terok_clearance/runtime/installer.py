@@ -1,68 +1,143 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Install the terok-clearance systemd user unit and reload the user daemon.
+"""Install the clearance hub + verdict helper systemd user units.
 
-Renders the bundled ``terok-dbus.service`` into
-``$XDG_CONFIG_HOME/systemd/user/terok-dbus.service`` with ``{{BIN}}``
-replaced by the operator-resolved ``terok-clearance-hub`` invocation.  Matches
-the install patterns used by ``terok-credential-proxy`` and
-``terok-gate``.
+The clearance flow splits across two units:
+
+* ``terok-clearance-hub.service`` — varlink server, subscriber
+  fan-out, authz binding.  Hardened (NNP + seccomp + mount-ns
+  isolation).
+* ``terok-clearance-verdict.service`` — stateless helper, execs
+  ``terok-shield allow|deny``.  Unhardened (podman setns requires
+  it).
+
+Both run the same ``terok-clearance-hub`` launcher with different
+subcommands (``serve`` vs ``serve-verdict``), so :func:`install_service`
+takes one ``bin_path`` and writes both units.
+
+Legacy migration: earlier releases shipped one monolithic
+``terok-dbus.service``.  On first post-split install the legacy unit
+is disabled + unlinked before the new pair goes down, so operators
+don't end up running two hubs against the same socket.
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import subprocess  # nosec B404
 from importlib import resources as importlib_resources
 from pathlib import Path
 
-UNIT_NAME = "terok-dbus.service"
+#: Unit files this installer owns.  Both are rendered from templates
+#: that live under ``resources/systemd/``; ``{{UNIT_VERSION}}`` +
+#: ``{{BIN}}`` substitution happens at render time.
+HUB_UNIT_NAME = "terok-clearance-hub.service"
+VERDICT_UNIT_NAME = "terok-clearance-verdict.service"
+
+#: Name of the pre-split monolithic unit we migrate away from.
+_LEGACY_UNIT_NAME = "terok-dbus.service"
+
+#: ``(unit_filename, version_marker_prefix)`` pairs.  The subcommand
+#: (``serve`` vs ``serve-verdict``) is baked into each template's
+#: ``ExecStart={{BIN}} <subcommand>`` line, so the installer only
+#: substitutes ``{{BIN}}`` + ``{{UNIT_VERSION}}``.
+_HUB = (HUB_UNIT_NAME, "# terok-clearance-hub-version:")
+_VERDICT = (VERDICT_UNIT_NAME, "# terok-clearance-verdict-version:")
+_UNITS = (_HUB, _VERDICT)
 
 _UNIT_VERSION = 1
-"""Bump when the unit template's semantics change.
+"""Bump when either unit template's semantics change.
 
-Substituted into the ``{{UNIT_VERSION}}`` marker at render time so
-:func:`check_units_outdated` can tell an installed unit from an older
-generation — the varlink hub, for example, ships as v1; any installed
-unit without a marker (the pre-varlink Shield1 D-Bus hub) reads as
-``None`` and is surfaced as stale.
+The marker is rendered into each unit at install time so
+:func:`check_units_outdated` can tell a current install from an older
+generation — any installed unit without a marker (the pre-split
+monolithic ``terok-dbus.service``) reads as ``None`` and is surfaced
+as stale.
 """
 
-_VERSION_MARKER_PREFIX = "# terok-dbus-version:"
-"""First non-SPDX line in every shipped template; also the parser key."""
+# Backwards-compatible alias — the unit name the legacy installer
+# exposed as ``UNIT_NAME``.  Kept so out-of-tree tests or tooling that
+# reached for it don't silently break; new code should use
+# :data:`HUB_UNIT_NAME`.
+UNIT_NAME = HUB_UNIT_NAME
 
 
-def install_service(bin_path: Path | list[str]) -> Path:
-    """Render the unit template, write it into the user systemd directory, reload.
+def install_service(bin_path: Path | list[str]) -> tuple[Path, Path]:
+    """Render + write both unit files into the user systemd directory.
+
+    Also disables + unlinks any leftover pre-split ``terok-dbus.service``
+    so the operator ends up with exactly the new pair running.  Calls
+    ``systemctl --user daemon-reload`` once at the end.
 
     Args:
-        bin_path: Either a ``Path`` naming the ``terok-clearance-hub`` launcher
-            (a single executable, space-tolerant — e.g. from
-            ``shutil.which("terok-clearance-hub")``) or a ``list[str]`` argv
-            (the module-fallback form, e.g.
-            ``[sys.executable, "-m", "terok_clearance.cli.main"]``).  Each token
-            is quoted individually on render so systemd's whitespace
-            tokeniser sees the intended argv boundaries regardless of
-            spaces inside any element.
+        bin_path: ``Path`` to the ``terok-clearance-hub`` launcher, or
+            a ``list[str]`` argv (the module-fallback form, e.g.
+            ``[sys.executable, "-m", "terok_clearance.cli.main"]``).
 
     Returns:
-        The on-disk path the unit was written to.
+        ``(hub_path, verdict_path)`` — the on-disk paths of the two
+        unit files.
     """
-    template = _read_template()
-    # Substitute the trusted int-string ``{{UNIT_VERSION}}`` before the
-    # operator-supplied ``{{BIN}}`` path — a hand-crafted bin_path
-    # containing the literal ``{{UNIT_VERSION}}`` substring would
-    # otherwise be partially rewritten by the second replace.
-    rendered = template.replace("{{UNIT_VERSION}}", str(_UNIT_VERSION)).replace(
-        "{{BIN}}", _render_exec_start(bin_path)
-    )
-    dest = _user_systemd_dir() / UNIT_NAME
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(rendered)
+    _uninstall_legacy()
+    bin_rendered = _render_exec_start(bin_path)
+    dest_dir = _user_systemd_dir()
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    paths: list[Path] = []
+    for unit_name, _marker in _UNITS:
+        template = _read_template(unit_name)
+        rendered = template.replace("{{UNIT_VERSION}}", str(_UNIT_VERSION)).replace(
+            "{{BIN}}", bin_rendered
+        )
+        dest = dest_dir / unit_name
+        dest.write_text(rendered)
+        paths.append(dest)
     _daemon_reload()
-    return dest
+    return paths[0], paths[1]
+
+
+def uninstall_service() -> None:
+    """Disable + unlink both new units + any pre-split legacy leftover.
+
+    Symmetric teardown for :func:`install_service` — ``terok uninstall``
+    calls this instead of rolling its own systemctl + unlink sequence.
+    Daemon-reloads once at the end so systemd's in-memory registry
+    drops the now-missing units.  All individual steps soft-fail so a
+    half-installed tree still ends up clean.
+    """
+    for name in (HUB_UNIT_NAME, VERDICT_UNIT_NAME, _LEGACY_UNIT_NAME):
+        _disable_and_unlink(name)
+    _daemon_reload()
+
+
+def _uninstall_legacy() -> None:
+    """Disable + unlink the pre-split monolithic unit if it's installed.
+
+    Runs before the new units land so a user with an existing
+    ``terok-dbus.service`` doesn't end up with two long-running hubs
+    racing for the same varlink socket.  Silent when systemctl is
+    absent (CI containers) or the legacy unit isn't there.
+    """
+    _disable_and_unlink(_LEGACY_UNIT_NAME)
+
+
+def _disable_and_unlink(unit_name: str) -> None:
+    """``systemctl --user disable --now <unit>`` + unlink — soft-fail on every step."""
+    path = _user_systemd_dir() / unit_name
+    if not path.is_file():
+        return
+    systemctl = shutil.which("systemctl")
+    if systemctl:
+        with contextlib.suppress(Exception):
+            subprocess.run(  # nosec B603
+                [systemctl, "--user", "disable", "--now", unit_name],
+                check=False,
+                capture_output=True,
+            )
+    with contextlib.suppress(OSError):
+        path.unlink()
 
 
 def _render_exec_start(bin_path: Path | list[str]) -> str:
@@ -93,13 +168,13 @@ def _systemd_quote(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def _read_template() -> str:
-    """Load the unit template from the installed package's ``resources/systemd``."""
+def _read_template(unit_name: str) -> str:
+    """Load the named unit template from the package's ``resources/systemd``."""
     source = (
         importlib_resources.files("terok_clearance")
         .joinpath("resources")
         .joinpath("systemd")
-        .joinpath(UNIT_NAME)
+        .joinpath(unit_name)
     )
     return source.read_text()
 
@@ -124,8 +199,13 @@ def _daemon_reload() -> None:
 
 
 def read_installed_unit() -> str | None:
-    """Return the contents of the installed hub unit, or ``None`` if absent."""
-    path = _user_systemd_dir() / UNIT_NAME
+    """Return the hub unit's file contents, or ``None`` if absent.
+
+    Kept for backwards compatibility with out-of-tree callers that
+    grew used to the pre-split single-unit API — reads the hub unit
+    (the one that was formerly ``terok-dbus.service``).
+    """
+    path = _user_systemd_dir() / HUB_UNIT_NAME
     try:
         return path.read_text()
     except OSError:
@@ -133,18 +213,24 @@ def read_installed_unit() -> str | None:
 
 
 def read_installed_unit_version() -> int | None:
-    """Return the ``# terok-dbus-version:`` stamp of the installed unit.
+    """Return the hub unit's ``# terok-clearance-hub-version:`` stamp, or ``None``.
 
-    Returns ``None`` when the unit is absent or predates the version
-    marker (the pre-varlink Shield1 D-Bus hub was shipped without
-    one).  ``check_units_outdated`` builds the operator-facing message
-    on top of this.
+    ``None`` is either "unit not installed" or "unit installed without
+    a marker" (the pre-split legacy unit) — ``check_units_outdated``
+    differentiates between those in its operator-facing message.
     """
-    unit = read_installed_unit()
-    if unit is None:
+    return _version_for(HUB_UNIT_NAME, _HUB[1])
+
+
+def _version_for(unit_name: str, marker_prefix: str) -> int | None:
+    """Return the version stamp from a specific installed unit, or ``None``."""
+    path = _user_systemd_dir() / unit_name
+    try:
+        text = path.read_text()
+    except OSError:
         return None
-    for line in unit.splitlines():
-        if line.startswith(_VERSION_MARKER_PREFIX):
+    for line in text.splitlines():
+        if line.startswith(marker_prefix):
             try:
                 return int(line.split(":", 1)[1].strip())
             except ValueError:
@@ -153,21 +239,29 @@ def read_installed_unit_version() -> int | None:
 
 
 def check_units_outdated() -> str | None:
-    """Return a one-line drift warning if the installed unit is stale, else ``None``.
+    """Return a one-line drift warning if any installed unit is stale, else ``None``.
 
-    ``None`` is returned when nothing is installed — the caller decides
-    whether that counts as an error (``terok setup`` skipped) or is
-    fine (headless host).  A stale install (older marker, or no
-    marker at all) yields a message ending in ``rerun `terok setup```
-    so ``sickbay --fix`` has an obvious next action.
+    Checks both the hub and the verdict units.  ``None`` is returned
+    when neither is installed (headless host, or ``terok setup``
+    hasn't run yet).  A legacy ``terok-dbus.service`` on disk counts
+    as "stale" so the operator is prompted to rerun setup and get
+    the split pair.
     """
-    if not (_user_systemd_dir() / UNIT_NAME).is_file():
-        return None
-    installed = read_installed_unit_version()
-    if installed is None or installed < _UNIT_VERSION:
-        installed_label = "unversioned" if installed is None else f"v{installed}"
+    legacy = _user_systemd_dir() / _LEGACY_UNIT_NAME
+    if legacy.is_file():
         return (
-            f"{UNIT_NAME} is outdated "
-            f"(installed {installed_label}, expected v{_UNIT_VERSION}) — rerun `terok setup`."
+            f"{_LEGACY_UNIT_NAME} is from a pre-split release — "
+            "rerun `terok setup` to migrate to the hub/verdict pair."
         )
+    for unit_name, marker in _UNITS:
+        path = _user_systemd_dir() / unit_name
+        if not path.is_file():
+            continue
+        installed = _version_for(unit_name, marker)
+        if installed is None or installed < _UNIT_VERSION:
+            installed_label = "unversioned" if installed is None else f"v{installed}"
+            return (
+                f"{unit_name} is outdated "
+                f"(installed {installed_label}, expected v{_UNIT_VERSION}) — rerun `terok setup`."
+            )
     return None

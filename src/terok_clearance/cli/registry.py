@@ -69,6 +69,19 @@ async def _handle_serve() -> None:
     await serve()
 
 
+async def _handle_serve_verdict() -> None:
+    """Run the verdict-helper service until SIGINT/SIGTERM.
+
+    Separate systemd unit from the hub — the helper execs
+    ``terok-shield allow|deny`` (and transitively ``podman unshare``)
+    which is incompatible with the seccomp + mount-ns hardening the
+    hub unit now carries.
+    """
+    from terok_clearance.verdict.server import serve
+
+    await serve()
+
+
 async def _handle_install_service(*, bin_path: str | None = None) -> None:  # NOSONAR S7503
     """Install the terok-clearance systemd user unit and reload the user daemon.
 
@@ -132,6 +145,11 @@ COMMANDS: tuple[CommandDef, ...] = (
         name="serve",
         help="Run the clearance hub (serves org.terok.Clearance1 varlink on a unix socket)",
         handler=_handle_serve,
+    ),
+    CommandDef(
+        name="serve-verdict",
+        help="Run the verdict helper (serves org.terok.ClearanceVerdict1 for shield exec)",
+        handler=_handle_serve_verdict,
     ),
     CommandDef(
         name="install-service",

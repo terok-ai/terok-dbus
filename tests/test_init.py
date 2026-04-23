@@ -36,6 +36,7 @@ class TestPublicApi:
             "default_clearance_socket_path",
             "read_installed_unit_version",
             "serve",
+            "uninstall_service",
             "wait_for_shutdown_signal",
         }
         assert set(terok_clearance.__all__) == expected

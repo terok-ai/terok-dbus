@@ -121,7 +121,39 @@ depends_on = []
 path = "terok_clearance.hub.server"
 layer = "infrastructure"
 depends_on = [
-    "terok_clearance.hub.ingester", "terok_clearance.runtime.service",
+    "terok_clearance.hub.ingester",
+    "terok_clearance.runtime.service",
+    "terok_clearance.verdict.client",
+]
+
+# Verdict — helper varlink service + hub-side client.  Stateless;
+# the hub handles all authz before forwarding a triple here.
+[[modules]]
+path = "terok_clearance.verdict.shield_exec"
+layer = "infrastructure"
+depends_on = []
+
+[[modules]]
+path = "terok_clearance.verdict.interface"
+layer = "wire"
+depends_on = []
+
+[[modules]]
+path = "terok_clearance.verdict.socket"
+layer = "wire"
+depends_on = ["terok_clearance.wire.socket"]
+
+[[modules]]
+path = "terok_clearance.verdict.client"
+layer = "infrastructure"
+depends_on = []
+
+[[modules]]
+path = "terok_clearance.verdict.server"
+layer = "infrastructure"
+depends_on = [
+    "terok_clearance.runtime.service",
+    "terok_clearance.verdict.shield_exec",
 ]
 
 # Client — varlink consumer library.

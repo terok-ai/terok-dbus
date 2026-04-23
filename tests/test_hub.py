@@ -11,7 +11,7 @@ transport.  End-to-end varlink round-trips live in ``test_client.py``.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -234,7 +234,7 @@ class TestApplyVerdict:
     async def test_success_fans_out_verdict_applied_event(self) -> None:
         hub = _hub()
         hub._update_live_verdicts(_blocked())
-        hub._run_shield = _stub_shield_ok
+        hub._verdict_client.apply = _stub_shield_ok
         q: asyncio.Queue = asyncio.Queue(maxsize=4)
         hub._subscribers.add(q)
 
@@ -254,7 +254,7 @@ class TestApplyVerdict:
         """Shield failure flows BOTH as a raised error AND as ok=false event."""
         hub = _hub()
         hub._update_live_verdicts(_blocked())
-        hub._run_shield = _stub_shield_fail
+        hub._verdict_client.apply = _stub_shield_fail
         q: asyncio.Queue = asyncio.Queue(maxsize=4)
         hub._subscribers.add(q)
 
@@ -271,76 +271,13 @@ class TestApplyVerdict:
         """A transient shield failure must leave the binding intact for retries."""
         hub = _hub()
         hub._update_live_verdicts(_blocked())
-        hub._run_shield = _stub_shield_fail
+        hub._verdict_client.apply = _stub_shield_fail
         request_id = f"{CONTAINER}:1"
 
         with pytest.raises(ShieldCliFailed):
             await hub._apply_verdict(CONTAINER, request_id, DOMAIN, "allow")
 
         assert hub._live_verdicts[request_id] == (CONTAINER, DOMAIN)
-
-
-# ── Shield subprocess dispatch ────────────────────────────────────────
-
-
-class TestRunShield:
-    """``_run_shield`` translates subprocess outcomes into (ok, stderr) tuples."""
-
-    @pytest.mark.asyncio
-    async def test_missing_shield_binary(self) -> None:
-        hub = ClearanceHub(shield_binary=None)
-        hub._shield_binary = None
-        ok, msg = await hub._run_shield(CONTAINER, DOMAIN, "allow")
-        assert ok is False
-        assert "terok-shield" in msg
-
-    @pytest.mark.asyncio
-    async def test_success_returns_ok(self) -> None:
-        hub = ClearanceHub(shield_binary="/bin/true")
-        proc = AsyncMock()
-        proc.communicate = AsyncMock(return_value=(b"", b""))
-        proc.returncode = 0
-        with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)):
-            ok, msg = await hub._run_shield(CONTAINER, DOMAIN, "allow")
-        assert ok is True
-        assert msg == ""
-
-    @pytest.mark.asyncio
-    async def test_nonzero_exit_returns_stderr_snippet(self) -> None:
-        hub = ClearanceHub(shield_binary="/bin/true")
-        proc = AsyncMock()
-        proc.communicate = AsyncMock(return_value=(b"", b"boom\n"))
-        proc.returncode = 1
-        with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)):
-            ok, msg = await hub._run_shield(CONTAINER, DOMAIN, "allow")
-        assert ok is False
-        assert msg == "boom"
-
-    @pytest.mark.asyncio
-    async def test_timeout_kills_process(self) -> None:
-        hub = ClearanceHub(shield_binary="/bin/true")
-        proc = AsyncMock()
-        proc.communicate = AsyncMock(side_effect=TimeoutError)
-        proc.kill = MagicMock()
-        with (
-            patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)),
-            patch("asyncio.wait_for", AsyncMock(side_effect=TimeoutError)),
-        ):
-            ok, msg = await hub._run_shield(CONTAINER, DOMAIN, "allow")
-        assert ok is False
-        assert "timed out" in msg
-        proc.kill.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_spawn_oserror_soft_fails(self) -> None:
-        hub = ClearanceHub(shield_binary="/bin/true")
-        with patch(
-            "asyncio.create_subprocess_exec",
-            AsyncMock(side_effect=OSError("exec failed")),
-        ):
-            ok, msg = await hub._run_shield(CONTAINER, DOMAIN, "allow")
-        assert ok is False
-        assert "spawn failed" in msg
 
 
 # ── Reader-event relay (end-to-end internals) ─────────────────────────

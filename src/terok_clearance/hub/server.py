@@ -23,9 +23,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import os
-import shutil
-import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -34,6 +31,7 @@ from asyncvarlink.serviceinterface import VarlinkServiceInterface
 
 from terok_clearance.domain.events import ClearanceEvent
 from terok_clearance.hub.ingester import EventIngester
+from terok_clearance.verdict.client import VerdictClient
 from terok_clearance.wire.errors import (
     InvalidAction,
     ShieldCliFailed,
@@ -44,18 +42,6 @@ from terok_clearance.wire.interface import Clearance1Interface
 from terok_clearance.wire.socket import default_clearance_socket_path
 
 _log = logging.getLogger(__name__)
-
-#: Upper bound on a single ``terok-shield allow|deny`` invocation.  Shield
-#: holds an nft lock and can also block on a slow podman pause; clients
-#: have their own reply timeout, so failing-fast here surfaces the real
-#: outcome (ShieldCliFailed) instead of letting the method call hang.
-_SHIELD_CLI_TIMEOUT_S = 10.0
-
-#: Cap stderr bytes we forward into a :class:`ShieldCliFailed` error.
-#: Desktop popups can't render multi-kilobyte bodies; clients also tend
-#: to truncate.  Prevents a shield crash dump from travelling end-to-end
-#: as a varlink error parameter.
-_STDERR_CAP_BYTES = 512
 
 #: Depth of per-subscriber event queues.  Slow subscribers don't block
 #: fan-out to other clients — the hub drops their oldest events once
@@ -103,12 +89,18 @@ class ClearanceHub:
         *,
         clearance_socket: Path | None = None,
         reader_socket: Path | None = None,
-        shield_binary: str | None = None,
+        verdict_client: VerdictClient | None = None,
     ) -> None:
-        """Configure the two sockets and the shield executable path."""
+        """Configure the two sockets and the verdict-helper client.
+
+        ``verdict_client`` is injected so tests can stub out shield exec
+        without spawning the helper process.  Production callers leave
+        it defaulted — a fresh :class:`VerdictClient` pointing at the
+        canonical helper socket.
+        """
         self._clearance_socket = clearance_socket or default_clearance_socket_path()
         self._reader_socket = reader_socket  # None → EventIngester picks its default.
-        self._shield_binary = shield_binary or _find_shield_binary()
+        self._verdict_client = verdict_client or VerdictClient()
 
         self._subscribers: set[asyncio.Queue[ClearanceEvent]] = set()
         # request_id → (container, dest) the hub emitted in the matching
@@ -189,6 +181,8 @@ class ClearanceHub:
             with contextlib.suppress(Exception):
                 await self._ingester.stop()
             self._ingester = None
+        with contextlib.suppress(Exception):
+            await self._verdict_client.stop()
         self._subscribers.clear()
         self._live_verdicts.clear()
 
@@ -318,7 +312,7 @@ class ClearanceHub:
                 got_dest=dest,
             )
 
-        ok, stderr_snippet = await self._run_shield(container, dest, action)
+        ok, stderr_snippet = await self._verdict_client.apply(container, dest, action)
         if not ok:
             # Restore the authz binding so a retry can reach shield — a
             # spawn / timeout / non-zero exit is transient and the next
@@ -339,43 +333,6 @@ class ClearanceHub:
         if not ok:
             raise ShieldCliFailed(action=action, stderr=stderr_snippet)
         return True
-
-    async def _run_shield(self, container: str, dest: str, action: str) -> tuple[bool, str]:
-        """Invoke ``terok-shield allow|deny``; return ``(ok, stderr_snippet)``.
-
-        Bounded by :data:`_SHIELD_CLI_TIMEOUT_S`.  Spawn errors, non-zero
-        exit, and timeouts all fold into ``(False, reason)`` so callers
-        see one shape regardless of how shield misbehaved.
-        """
-        if not self._shield_binary:
-            return False, "terok-shield not found on PATH"
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                self._shield_binary,
-                action,
-                container,
-                dest,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.PIPE,
-            )
-        except OSError as exc:
-            _log.error("failed to spawn terok-shield: %s", exc)
-            return False, f"spawn failed: {exc}"
-        try:
-            _, stderr_bytes = await asyncio.wait_for(
-                proc.communicate(), timeout=_SHIELD_CLI_TIMEOUT_S
-            )
-        except TimeoutError:
-            proc.kill()
-            with contextlib.suppress(Exception):
-                await proc.communicate()
-            _log.warning("shield %s timed out after %gs", action, _SHIELD_CLI_TIMEOUT_S)
-            return False, f"timed out after {_SHIELD_CLI_TIMEOUT_S}s"
-        snippet = (stderr_bytes[:_STDERR_CAP_BYTES] or b"").decode(errors="replace").strip()
-        ok = proc.returncode == 0
-        if not ok:
-            _log.warning("shield %s failed: %s", action, snippet)
-        return ok, snippet
 
 
 # ── module-level helpers ───────────────────────────────────────────────
@@ -406,18 +363,6 @@ def _translate_reader_event(wire_type: str, raw: dict) -> ClearanceEvent:
             reason=str(raw.get("reason", "")),
         )
     return ClearanceEvent(type=wire_type, container=container)
-
-
-def _find_shield_binary() -> str | None:
-    """Locate ``terok-shield`` — sibling venv first, then PATH, then ``None``."""
-    sibling = Path(sys.executable).parent / "terok-shield"
-    # ``is_file`` would happily return a non-executable artifact in the
-    # venv's ``bin/`` dir (broken install, editable-shim dropout) — check
-    # for the exec bit so the caller still gets a working fallback via
-    # ``shutil.which`` instead of spawn-failing on every verdict.
-    if sibling.is_file() and os.access(sibling, os.X_OK):
-        return str(sibling)
-    return shutil.which("terok-shield")
 
 
 def _own_version() -> str:
