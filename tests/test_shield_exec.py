@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for [`run_shield`][] — the ``terok-shield`` subprocess wrapper."""
+"""Tests for [`run_shield`][terok_clearance.verdict.server.run_shield] — the ``terok-shield`` subprocess wrapper."""
 
 from __future__ import annotations
 

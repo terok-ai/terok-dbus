@@ -6,7 +6,7 @@
 Connects to the hub over the clearance unix socket, streams events via
 a background subscriber task, and exposes ``verdict()`` for the
 companion RPC channel.  Doesn't know anything about notification
-rendering or desktop state — that's [`EventSubscriber`][]'s job and
+rendering or desktop state — that's [`EventSubscriber`][terok_clearance.EventSubscriber]'s job and
 lives one module up.
 
 Why two connections: varlink is strictly serial per connection (one
@@ -40,10 +40,10 @@ class ClearanceClient:
 
     Two async coroutines to drive:
 
-    * [`start`][] — open the subscribe + RPC connections and begin
+    * [`start`][terok_clearance.client.client.ClearanceClient.start] — open the subscribe + RPC connections and begin
       relaying events to the user-supplied callback.  Returns once both
       channels are live; events arrive via ``on_event`` from then on.
-    * [`verdict`][] — RPC call; returns ``True`` if ``terok-shield``
+    * [`verdict`][terok_clearance.client.client.ClearanceClient.verdict] — RPC call; returns ``True`` if ``terok-shield``
       applied the action, ``False`` on any refusal or shield failure.
       The refusal reason is logged at WARNING.
 
@@ -67,7 +67,7 @@ class ClearanceClient:
     )
 
     def __init__(self, *, socket_path: Path | None = None) -> None:
-        """Remember the target socket; defaults to [`default_clearance_socket_path`][]."""
+        """Remember the target socket; defaults to [`default_clearance_socket_path`][terok_clearance.client.client.default_clearance_socket_path]."""
         self._socket_path = socket_path or default_clearance_socket_path()
         self._on_event: EventCallback | None = None
         self._sub_transport: object | None = None
@@ -76,7 +76,7 @@ class ClearanceClient:
         self._rpc_proxy: object | None = None
         self._stream_task: asyncio.Task[None] | None = None
         self._stopping = False
-        # Set by [`poke_reconnect`][]; awaited inside the back-off
+        # Set by [`poke_reconnect`][terok_clearance.client.client.ClearanceClient.poke_reconnect]; awaited inside the back-off
         # window.  Constructed here (not lazily) so a focus-gain poke
         # that lands between ``start()`` and the first ``_run_stream``
         # iteration isn't silently dropped.
@@ -88,7 +88,7 @@ class ClearanceClient:
         The initial connect is awaited synchronously so callers see
         ``start()`` return only after the subscription is live — a
         hub that's down at startup still propagates as an exception.
-        Subsequent drops are handled by [`_run_stream`][]'s internal
+        Subsequent drops are handled by `_run_stream`'s internal
         reconnect loop so long-running consumers (TUI, notifier)
         survive a ``systemctl restart terok-clearance`` without
         restarting themselves.
@@ -143,7 +143,7 @@ class ClearanceClient:
         """Skip any in-flight reconnect back-off and retry immediately.
 
         Idempotent; a no-op when the stream is healthy because the
-        event is only awaited inside [`_run_stream`][]'s back-off
+        event is only awaited inside `_run_stream`'s back-off
         window.
         """
         self._reconnect_poke.set()

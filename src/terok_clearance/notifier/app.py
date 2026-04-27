@@ -13,7 +13,7 @@ the notifier is orchestration-specific — any clearance-capable
 deployment (with or without terok) benefits from the desktop bridge,
 and the task-name enrichment is fed through the
 ``ai.terok.task_meta_path`` annotation data contract (see
-[`terok_clearance.client.identity_resolver`][]).
+[`terok_clearance.client.identity_resolver`][terok_clearance.client.identity_resolver]).
 """
 
 from __future__ import annotations
@@ -59,14 +59,14 @@ async def run_notifier() -> None:
 
 
 def _pick_inspector() -> ContainerInspector:
-    """Return the best available [`ContainerInspector`][] at boot time.
+    """Return the best available [`ContainerInspector`][terok_clearance.ContainerInspector] at boot time.
 
     Runtime selection is a sandbox concern — if terok-sandbox is
     installed, its ``create_container_inspector`` factory hands back an
     implementation matched to the active runtime (podman today, krun
     or something else tomorrow).  Without sandbox, clearance still
     boots; notifications render with raw container ids via
-    [`NullInspector`][].
+    [`NullInspector`][terok_clearance.NullInspector].
     """
     try:
         from terok_sandbox import create_container_inspector
@@ -98,7 +98,7 @@ async def _teardown(subscriber: EventSubscriber, notifier: Notifier) -> None:
 
 
 def main() -> None:  # pragma: no cover — CLI entry point
-    """Systemd-unit ``ExecStart`` target — launches [`run_notifier`][] on an event loop."""
+    """Systemd-unit ``ExecStart`` target — launches [`run_notifier`][terok_clearance.notifier.app.run_notifier] on an event loop."""
     asyncio.run(run_notifier())
 
 

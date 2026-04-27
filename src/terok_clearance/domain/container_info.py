@@ -6,10 +6,10 @@
 A minimal view over what ``podman inspect`` returns — enough for the
 notifier / TUI subscriber to label an event.  Lives in the domain
 layer because it's pure data; the thing that *produces* a
-[`ContainerInfo`][] lives at ``client/podman_inspector.py``.
+[`ContainerInfo`][terok_clearance.domain.container_info.ContainerInfo] lives at ``client/podman_inspector.py``.
 
 Annotation semantics are caller-owned.  This module doesn't know
-about ``ai.terok.*`` keys; whoever pulls a [`ContainerInfo`][]
+about ``ai.terok.*`` keys; whoever pulls a [`ContainerInfo`][terok_clearance.domain.container_info.ContainerInfo]
 plucks the annotations it understands.
 """
 
@@ -19,7 +19,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
-#: Sentinel used as the default value for [`ContainerInfo.annotations`][]
+#: Sentinel used as the default value for [`ContainerInfo.annotations`][terok_clearance.domain.container_info.ContainerInfo.annotations]
 #: so every empty instance shares the same frozen mapping — prevents an
 #: accidental write from leaking across callers.
 _EMPTY_ANNOTATIONS: Mapping[str, str] = MappingProxyType({})
@@ -47,9 +47,9 @@ class ContainerInfo:
     annotations: Mapping[str, str] = field(default_factory=lambda: _EMPTY_ANNOTATIONS)
     """Every OCI annotation podman recorded for this container.
 
-    Exposed as a read-only [`Mapping`][] — cached instances are
+    Exposed as a read-only `Mapping` — cached instances are
     shared across inspector callers, so mutating the underlying dict
-    would poison future lookups.  Build with [`types.MappingProxyType`][]
+    would poison future lookups.  Build with [`types.MappingProxyType`][types.MappingProxyType]
     at construction time; callers (clearance's task-aware resolver,
     anything else that cares) pluck out the keys they know about.
     """

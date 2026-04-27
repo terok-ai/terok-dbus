@@ -9,7 +9,7 @@ the connection closes.  Verdict clients call ``Verdict()`` as a regular
 RPC; the hub validates the ``(container, request_id, dest)`` triple
 against its live-pending state before shelling out to ``terok-shield``.
 
-The whole surface is typed-Python → [`asyncvarlink`][] derives the
+The whole surface is typed-Python → `asyncvarlink` derives the
 varlink IDL from these annotations, so there's no hand-authored
 ``.varlink`` file to drift from the code.  ``varlinkctl`` can still
 introspect the service at runtime via the standard
@@ -35,7 +35,7 @@ class Clearance1Interface(VarlinkInterface, name=CLEARANCE_INTERFACE_NAME):
     without a live varlink connection:
 
     * ``event_stream_factory`` — returns a fresh ``AsyncIterator``
-      yielding [`ClearanceEvent`][] instances.  The hub owns one
+      yielding [`ClearanceEvent`][terok_clearance.ClearanceEvent] instances.  The hub owns one
       per connected subscriber so backpressure is local to the slow
       client.
     * ``apply_verdict`` — validates the triple and, on success, shells

@@ -6,11 +6,11 @@
 Two unrelated wire formats live under this one package:
 
 * ``org.terok.Clearance1`` over a unix-socket **varlink** transport —
-  the hub ([`ClearanceHub`][]) and the client library
-  ([`ClearanceClient`][], [`EventSubscriber`][]) that drive the
+  the hub ([`ClearanceHub`][terok_clearance.ClearanceHub]) and the client library
+  ([`ClearanceClient`][terok_clearance.ClearanceClient], [`EventSubscriber`][terok_clearance.EventSubscriber]) that drive the
   per-container block / verdict / lifecycle flow.
 * ``org.freedesktop.Notifications`` over **D-Bus** — the
-  [`DbusNotifier`][] wrapper that renders those events as desktop
+  [`DbusNotifier`][terok_clearance.DbusNotifier] wrapper that renders those events as desktop
   popups.  Kept because that's the OS API; every other D-Bus path in
   this package (``org.terok.Shield1``) was removed in favour of the
   varlink transport.

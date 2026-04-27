@@ -6,7 +6,7 @@
 Covers the glue between the subscriber, the notification backend, and
 the runtime-neutral inspector factory — the parts of the daemon that
 are reachable without a live session D-Bus or varlink hub.  The
-``ExecStart`` entry point ([`main`][]) stays out of scope here; the
+``ExecStart`` entry point ([`main`][terok_clearance.cli.main]) stays out of scope here; the
 systemd unit test in ``test_notifier_install.py`` covers the bits a
 unit-file render test can reach.
 """
@@ -36,7 +36,7 @@ def test_pick_inspector_uses_sandbox_factory_when_available() -> None:
 
 
 def test_pick_inspector_falls_back_to_null_on_import_error() -> None:
-    """No terok-sandbox installed → [`NullInspector`][], no crash."""
+    """No terok-sandbox installed → [`NullInspector`][terok_clearance.NullInspector], no crash."""
     # Simulate the import failing regardless of local install state.
     with patch.object(
         notifier_app,

@@ -13,7 +13,7 @@ The clearance flow splits across two units:
   it).
 
 Both run the same ``terok-clearance-hub`` launcher with different
-subcommands (``serve`` vs ``serve-verdict``), so [`install_service`][]
+subcommands (``serve`` vs ``serve-verdict``), so [`install_service`][terok_clearance.runtime.installer.install_service]
 takes one ``bin_path`` and writes both units.
 
 Legacy migration: earlier releases shipped one monolithic
@@ -55,7 +55,7 @@ NOTIFIER_UNIT_NAME = "terok-clearance-notifier.service"
 _LEGACY_UNIT_NAME = "terok-dbus.service"
 
 #: ``(unit_filename, version_marker_prefix)`` pairs for the hub+verdict
-#: pair installed by [`install_service`][].  The subcommand
+#: pair installed by [`install_service`][terok_clearance.runtime.installer.install_service].  The subcommand
 #: (``serve`` vs ``serve-verdict``) is baked into each template's
 #: ``ExecStart={{BIN}} <subcommand>`` line, so the installer only
 #: substitutes ``{{BIN}}`` + ``{{UNIT_VERSION}}``.
@@ -64,7 +64,7 @@ _VERDICT = (VERDICT_UNIT_NAME, "# terok-clearance-verdict-version:")
 _UNITS = (_HUB, _VERDICT)
 
 #: Version marker pair for the notifier unit, installed separately
-#: via [`install_notifier_service`][] because the notifier runs a
+#: via [`install_notifier_service`][terok_clearance.runtime.installer.install_notifier_service] because the notifier runs a
 #: different launcher (``python -m terok_clearance.notifier.app``)
 #: than the hub/verdict pair.
 _NOTIFIER = (NOTIFIER_UNIT_NAME, "# terok-clearance-notifier-version:")
@@ -90,7 +90,7 @@ the session bus.
 # Backwards-compatible alias — the unit name the legacy installer
 # exposed as ``UNIT_NAME``.  Kept so out-of-tree tests or tooling that
 # reached for it don't silently break; new code should use
-# [`HUB_UNIT_NAME`][].
+# [`HUB_UNIT_NAME`][terok_clearance.runtime.installer.HUB_UNIT_NAME].
 UNIT_NAME = HUB_UNIT_NAME
 
 
@@ -132,7 +132,7 @@ def install_service(bin_path: Path | list[str] | None = None) -> tuple[Path, Pat
 def uninstall_service() -> None:
     """Disable + unlink both new units + any pre-split legacy leftover.
 
-    Symmetric teardown for [`install_service`][] — ``terok uninstall``
+    Symmetric teardown for [`install_service`][terok_clearance.runtime.installer.install_service] — ``terok uninstall``
     calls this instead of rolling its own systemctl + unlink sequence.
     Daemon-reloads once at the end so systemd's in-memory registry
     drops the now-missing units.  All individual steps soft-fail so a
@@ -146,7 +146,7 @@ def uninstall_service() -> None:
 def install_notifier_service(bin_path: Path | list[str] | None = None) -> Path:
     """Render + write the notifier unit into the user systemd directory.
 
-    Paired with [`install_service`][]: headless hosts that installed
+    Paired with [`install_service`][terok_clearance.runtime.installer.install_service]: headless hosts that installed
     the hub + verdict pair can opt into the desktop notifier later by
     calling only this function.  Daemon-reloads once at the end.
 
@@ -154,7 +154,7 @@ def install_notifier_service(bin_path: Path | list[str] | None = None) -> Path:
         bin_path: ``Path`` to the notifier launcher, or a ``list[str]``
             argv.  ``None`` (the default) renders
             ``python -m terok_clearance.notifier.app`` against the
-            running interpreter — same rationale as [`install_service`][].
+            running interpreter — same rationale as [`install_service`][terok_clearance.runtime.installer.install_service].
 
     Returns:
         The on-disk path of the written unit file.
@@ -177,7 +177,7 @@ def install_notifier_service(bin_path: Path | list[str] | None = None) -> Path:
 def uninstall_notifier_service() -> None:
     """Disable + unlink the notifier unit; daemon-reload once.
 
-    Symmetric teardown for [`install_notifier_service`][].  Soft-fail
+    Symmetric teardown for [`install_notifier_service`][terok_clearance.runtime.installer.install_notifier_service].  Soft-fail
     on every step so a half-installed tree still ends up clean.
     """
     _disable_and_unlink(NOTIFIER_UNIT_NAME)
@@ -325,7 +325,7 @@ def check_units_outdated() -> str | None:
     """Return a one-line drift warning if any installed unit is stale, else ``None``.
 
     Checks hub + verdict together (they're installed as a pair by
-    [`install_service`][]) plus the notifier independently (headless
+    [`install_service`][terok_clearance.runtime.installer.install_service]) plus the notifier independently (headless
     hosts may install it later, or not at all).  ``None`` is returned
     when neither pair nor notifier is installed (headless host, or
     no setup command has run yet); a one-sided hub/verdict pair is

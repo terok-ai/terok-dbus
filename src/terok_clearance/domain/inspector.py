@@ -6,12 +6,12 @@
 Clearance renders notifications for every container the firewall
 touches, regardless of which runtime created it (podman today; a
 future krun / docker / containerd backend tomorrow).  The translation
-from *container id* to [`ContainerInfo`][] is therefore expressed
-here as a pure [`ContainerInspector`][] protocol; the concrete
+from *container id* to [`ContainerInfo`][terok_clearance.ContainerInfo] is therefore expressed
+here as a pure [`ContainerInspector`][terok_clearance.domain.inspector.ContainerInspector] protocol; the concrete
 backend that knows how to talk to a specific runtime lives in
 terok-sandbox, where runtime selection is owned.
 
-[`NullInspector`][] ships as a safe default: deployments without
+[`NullInspector`][terok_clearance.domain.inspector.NullInspector] ships as a safe default: deployments without
 any runtime-aware package installed (clearance standalone, test
 rigs) still boot; notifications just carry raw container ids.
 """
@@ -25,7 +25,7 @@ from terok_clearance.domain.container_info import ContainerInfo
 
 @runtime_checkable
 class ContainerInspector(Protocol):
-    """Callable that maps a container id to a [`ContainerInfo`][].
+    """Callable that maps a container id to a [`ContainerInfo`][terok_clearance.ContainerInfo].
 
     The protocol intentionally covers only the notification-rendering
     use case — name + OCI annotations + lifecycle state.  Broader
@@ -34,18 +34,18 @@ class ContainerInspector(Protocol):
     this contract.
 
     Implementations MUST soft-fail: an unreachable runtime / missing
-    container / malformed metadata returns an empty [`ContainerInfo`][]
+    container / malformed metadata returns an empty [`ContainerInfo`][terok_clearance.ContainerInfo]
     rather than raising, so notification pipelines keep their fallback
     label instead of crashing on a lookup hiccup.
     """
 
     def __call__(self, container_id: str) -> ContainerInfo:
-        """Return the best-effort [`ContainerInfo`][] for *container_id*."""
+        """Return the best-effort [`ContainerInfo`][terok_clearance.ContainerInfo] for *container_id*."""
         ...
 
 
 class NullInspector:
-    """Always-empty [`ContainerInspector`][] — the graceful-degradation default.
+    """Always-empty [`ContainerInspector`][terok_clearance.domain.inspector.ContainerInspector] — the graceful-degradation default.
 
     Installed when no runtime-aware package provides a concrete
     backend.  Every lookup returns ``ContainerInfo()`` so the
@@ -53,5 +53,5 @@ class NullInspector:
     """
 
     def __call__(self, _container_id: str) -> ContainerInfo:
-        """Return the universal empty [`ContainerInfo`][]."""
+        """Return the universal empty [`ContainerInfo`][terok_clearance.ContainerInfo]."""
         return ContainerInfo()

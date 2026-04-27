@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for [`ClearanceHub`][] — state machine in isolation.
+"""Tests for [`ClearanceHub`][terok_clearance.ClearanceHub] — state machine in isolation.
 
 Exercises the hub's internals (authz binding map, fan-out queues,
 reader translation, verdict dispatch) without going through the varlink

@@ -14,8 +14,8 @@ Authorisation is structural: the socket is mode 0600 (same-UID only),
 and every ``Verdict`` call must cite a ``(container, request_id, dest)``
 triple the hub actually emitted via ``connection_blocked``.  The
 triple is recorded at emit time and dropped on verdict or lifecycle
-change; anything that doesn't match is a [`UnknownRequest`][] or
-[`VerdictTupleMismatch`][] refusal.
+change; anything that doesn't match is a [`UnknownRequest`][terok_clearance.hub.server.UnknownRequest] or
+[`VerdictTupleMismatch`][terok_clearance.hub.server.VerdictTupleMismatch] refusal.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ _SUBSCRIBER_QUEUE_DEPTH = 128
 #: Reader ``type`` → wire-level ``ClearanceEvent.type``.  Only one event
 #: renames (``pending → connection_blocked``); every other reader type
 #: flows through unchanged.  Kept as an explicit allowlist so unknown
-#: values get dropped at [`ClearanceHub._relay_reader_event`][] rather
+#: values get dropped at `ClearanceHub._relay_reader_event` rather
 #: than leaking to clients.
 _WIRE_EVENT_TYPES: frozenset[str] = frozenset(
     {
@@ -72,14 +72,14 @@ class ClearanceHub:
     Owns three pieces of state:
 
     * ``_subscribers`` — a set of bounded per-connection queues; the hub
-      puts a [`ClearanceEvent`][] on each one every time the reader
+      puts a [`ClearanceEvent`][terok_clearance.ClearanceEvent] on each one every time the reader
       ingester delivers an event.  Slow clients see their oldest events
       dropped; fast clients aren't affected.
     * ``_live_verdicts`` — the ``request_id → (container, dest)`` map
       the ``Verdict`` method checks for the authz binding.
-    * An [`EventIngester`][] bound to the canonical reader socket.
+    * An [`EventIngester`][terok_clearance.hub.ingester.EventIngester] bound to the canonical reader socket.
 
-    Lifecycle: [`start`][] brings everything up; [`stop`][] tears
+    Lifecycle: [`start`][terok_clearance.hub.server.ClearanceHub.start] brings everything up; [`stop`][terok_clearance.hub.server.ClearanceHub.stop] tears
     it down under individual timeouts so a flaky bus or a stuck
     subscriber can't burn systemd's stop-sigterm deadline.
     """
@@ -95,7 +95,7 @@ class ClearanceHub:
 
         ``verdict_client`` is injected so tests can stub out shield exec
         without spawning the helper process.  Production callers leave
-        it defaulted — a fresh [`VerdictClient`][] pointing at the
+        it defaulted — a fresh [`VerdictClient`][terok_clearance.hub.server.VerdictClient] pointing at the
         canonical helper socket.
         """
         self._clearance_socket = clearance_socket or default_clearance_socket_path()
@@ -189,7 +189,7 @@ class ClearanceHub:
     # ── reader ingestion ───────────────────────────────────────────────
 
     async def _relay_reader_event(self, raw: dict) -> None:  # NOSONAR S7503
-        """Translate one ingester dict → a [`ClearanceEvent`][] + fan it out.
+        """Translate one ingester dict → a [`ClearanceEvent`][terok_clearance.ClearanceEvent] + fan it out.
 
         Records the authz binding on ``connection_blocked`` events and
         releases it on ``verdict_applied`` / lifecycle changes, so the
@@ -258,7 +258,7 @@ class ClearanceHub:
         "normally" with ``delay_generator=False`` trips the asyncvarlink
         server-protocol ``assert not continues`` because every yield
         leaves ``continues=True``.  Shutdown runs through
-        [`stop`][]'s ``close_clients()`` instead, which triggers a
+        [`stop`][terok_clearance.hub.server.ClearanceHub.stop]'s ``close_clients()`` instead, which triggers a
         send_reply OSError and a clean ``generator.aclose()`` into the
         ``finally`` block below.
 
@@ -286,8 +286,8 @@ class ClearanceHub:
     async def _apply_verdict(self, container: str, request_id: str, dest: str, action: str) -> bool:
         """Validate the triple, shell out to ``terok-shield``, emit VerdictApplied.
 
-        Raises [`InvalidAction`][] / [`UnknownRequest`][] /
-        [`VerdictTupleMismatch`][] / [`ShieldCliFailed`][] on the
+        Raises [`InvalidAction`][terok_clearance.hub.server.InvalidAction] / [`UnknownRequest`][terok_clearance.hub.server.UnknownRequest] /
+        [`VerdictTupleMismatch`][terok_clearance.hub.server.VerdictTupleMismatch] / [`ShieldCliFailed`][terok_clearance.hub.server.ShieldCliFailed] on the
         four refusal paths; returns ``True`` only when the shield
         invocation itself succeeded.  The ``verdict_applied`` event
         emitted on the shared fan-out carries the same ``ok`` value so
@@ -339,7 +339,7 @@ class ClearanceHub:
 
 
 def _translate_reader_event(wire_type: str, raw: dict) -> ClearanceEvent:
-    """Build a [`ClearanceEvent`][] from an ingester-parsed dict.
+    """Build a [`ClearanceEvent`][terok_clearance.ClearanceEvent] from an ingester-parsed dict.
 
     The ingester already decodes JSON; this just moves fields around
     into the typed shape and normalises missing values.  Keyed by
@@ -389,8 +389,8 @@ async def serve() -> None:  # pragma: no cover — integration path
     """Run the hub service until SIGINT/SIGTERM.
 
     The entry point ``terok-clearance serve`` hands off here.  Blocks forever
-    on a signal-set [`asyncio.Event`][]; systemd's SIGTERM flips it,
-    then [`stop`][] tears down the server under a timeout.
+    on a signal-set [`asyncio.Event`][asyncio.Event]; systemd's SIGTERM flips it,
+    then [`stop`][terok_clearance.hub.server.ClearanceHub.stop] tears down the server under a timeout.
     """
     from terok_clearance.runtime.service import configure_logging, wait_for_shutdown_signal
 

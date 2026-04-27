@@ -3,7 +3,7 @@
 
 """Hub-side client for the verdict helper.
 
-One method: [`VerdictClient.apply`][] forwards a pre-validated
+One method: [`VerdictClient.apply`][terok_clearance.verdict.client.VerdictClient.apply] forwards a pre-validated
 ``(container, dest, action)`` triple to the helper and returns
 ``(ok, stderr_snippet)`` — the same shape the inline
 ``_run_shield`` used to return before the split.  Keeps the hub's
@@ -33,7 +33,7 @@ _log = logging.getLogger(__name__)
 class VerdictClient:
     """Call ``Apply`` on the verdict helper over its unix varlink socket.
 
-    Lazy-connecting: the first [`apply`][] opens the transport; a
+    Lazy-connecting: the first [`apply`][terok_clearance.verdict.client.VerdictClient.apply] opens the transport; a
     dropped connection reconnects on the next call.  Safe under
     concurrent verdicts on one instance — asyncvarlink serialises
     per-connection replies anyway, and the reconnect lock keeps two
@@ -41,7 +41,7 @@ class VerdictClient:
     """
 
     def __init__(self, *, socket_path: Path | None = None) -> None:
-        """Remember the socket; default to [`default_verdict_socket_path`][]."""
+        """Remember the socket; default to [`default_verdict_socket_path`][terok_clearance.verdict.client.default_verdict_socket_path]."""
         self._socket_path = socket_path or default_verdict_socket_path()
         self._transport: object | None = None
         self._proxy: object | None = None

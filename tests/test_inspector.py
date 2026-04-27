@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for [`terok_clearance.domain.inspector`][].
+"""Tests for [`terok_clearance.domain.inspector`][terok_clearance.domain.inspector].
 
-Covers the runtime-neutral abstraction: the [`ContainerInspector`][]
-protocol's structural check and the [`NullInspector`][] always-empty
+Covers the runtime-neutral abstraction: the [`ContainerInspector`][terok_clearance.ContainerInspector]
+protocol's structural check and the [`NullInspector`][terok_clearance.NullInspector] always-empty
 default.
 """
 
@@ -15,7 +15,7 @@ from terok_clearance.domain.inspector import ContainerInspector, NullInspector
 
 
 def test_null_inspector_returns_empty_info() -> None:
-    """Every lookup returns the universal empty [`ContainerInfo`][]."""
+    """Every lookup returns the universal empty [`ContainerInfo`][terok_clearance.ContainerInfo]."""
     assert NullInspector()("anything") == ContainerInfo()
 
 
@@ -27,7 +27,7 @@ def test_null_inspector_is_reusable() -> None:
 
 
 def test_null_inspector_satisfies_protocol() -> None:
-    """Runtime-check: ``NullInspector`` ducks-in as a [`ContainerInspector`][]."""
+    """Runtime-check: ``NullInspector`` ducks-in as a [`ContainerInspector`][terok_clearance.ContainerInspector]."""
     assert isinstance(NullInspector(), ContainerInspector)
 
 

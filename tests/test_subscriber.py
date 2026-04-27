@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for [`EventSubscriber`][] — the notification-rendering layer.
+"""Tests for [`EventSubscriber`][terok_clearance.EventSubscriber] — the notification-rendering layer.
 
 Exercises the dispatch + state machine in isolation by mocking the
-[`ClearanceClient`][] transport.  Real varlink round-trips live in
-``test_client.py``; here we feed [`ClearanceEvent`][] instances
-straight into [`EventSubscriber._on_event`][] and inspect the
+[`ClearanceClient`][terok_clearance.ClearanceClient] transport.  Real varlink round-trips live in
+``test_client.py``; here we feed [`ClearanceEvent`][terok_clearance.ClearanceEvent] instances
+straight into `EventSubscriber._on_event` and inspect the
 notifier it drives.
 """
 

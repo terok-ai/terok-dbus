@@ -15,7 +15,7 @@ from dbus_fast.aio import MessageBus
 #: Addressing for the freedesktop Notifications service.  Exposed at
 #: module scope so tests + out-of-tree consumers can reference the
 #: same literals the backend dispatches against, but callers in new
-#: code should reach for the [`Notifier`][protocol.Notifier] abstraction
+#: code should reach for the [`Notifier`][terok_clearance.notifications.protocol.Notifier] abstraction
 #: instead of re-implementing the spec.
 BUS_NAME = "org.freedesktop.Notifications"
 OBJECT_PATH = "/org/freedesktop/Notifications"

@@ -9,9 +9,9 @@ user namespace that owns the container netns).  From there, the session
 — even when ``DBUS_SESSION_BUS_ADDRESS`` points at the right socket.
 
 The hub runs in the host user namespace, so it *can* reach the session
-bus.  [`EventIngester`][] gives the readers a pipe to cross: it owns
+bus.  [`EventIngester`][terok_clearance.hub.ingester.EventIngester] gives the readers a pipe to cross: it owns
 a unix socket that accepts line-delimited JSON events from any local
-connection, decodes them, and calls the matching [`ShieldHub`][]
+connection, decodes them, and calls the matching `ShieldHub`
 signal methods on the bus — where emission works.
 
 One socket per hub, one hub per user session.  Readers reconnect on

@@ -30,7 +30,7 @@ class Notification:
     The identity fields (``container_id``, ``container_name``,
     ``project``, ``task_id``, ``task_name``) are presentation-layer
     context the subscriber's ``identity_resolver`` produced — empty
-    strings when unresolved.  The desktop [`DbusNotifier`][]
+    strings when unresolved.  The desktop [`DbusNotifier`][terok_clearance.DbusNotifier]
     discards all of them; the TUI uses the task triple to render a
     Task column for terok-managed containers and falls back to the
     container name for standalone ones.
@@ -53,7 +53,7 @@ class CallbackNotifier:
     """``Notifier`` backend that delegates rendering to caller-supplied hooks.
 
     Args:
-        on_notify: Called for every ``notify()`` with a [`Notification`][].
+        on_notify: Called for every ``notify()`` with a [`Notification`][terok_clearance.notifications.callback.Notification].
             Receives new notifications (``replaces_id == 0``) and in-place
             updates (``replaces_id > 0``, e.g. verdict results).
         on_container_started: Called for every ``ContainerStarted`` signal

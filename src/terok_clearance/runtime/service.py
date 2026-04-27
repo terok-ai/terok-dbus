@@ -3,7 +3,7 @@
 
 """Shared helpers for the two long-lived asyncio entry points.
 
-The hub ([`terok_clearance.serve`][]) and the desktop notifier
+The hub ([`terok_clearance.serve`][terok_clearance.serve]) and the desktop notifier
 (``terok-clearance-notifier`` in the ``terok`` package) both need the
 same two pieces of systemd-unit plumbing: log to stderr so journald
 picks it up, and block on ``SIGINT`` / ``SIGTERM`` until the operator

@@ -3,7 +3,7 @@
 
 """Typed varlink errors the hub can raise from ``Verdict``.
 
-Subclasses of [`asyncvarlink.TypedVarlinkErrorReply`][] — the hub
+Subclasses of `asyncvarlink.TypedVarlinkErrorReply` — the hub
 raises one of these on the four refusal paths, and clients pattern-
 match on the subclass instead of stringly-matching a message.  All
 four share the ``org.terok.Clearance1`` interface namespace.

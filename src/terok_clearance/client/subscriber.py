@@ -3,8 +3,8 @@
 
 """Render clearance-hub events as desktop notifications.
 
-Turns the event stream from [`ClearanceClient`][] into calls on an
-injected [`Notifier`][]: a block arrives, the operator sees a popup
+Turns the event stream from [`ClearanceClient`][terok_clearance.ClearanceClient] into calls on an
+injected [`Notifier`][terok_clearance.client.subscriber.Notifier]: a block arrives, the operator sees a popup
 with Allow/Deny actions, clicks route back to the hub as a ``Verdict``.
 Live-block dedup, shield-down popup tracking, and task-identity
 resolution live here because they're all presentation concerns —
@@ -83,7 +83,7 @@ def _identity_label(identity: ContainerIdentity, fallback_id: str) -> str:
 
 
 def _identity_line(identity: ContainerIdentity, fallback_id: str) -> str:
-    """First line of a notification body — a prefixed [`_identity_label`][]."""
+    """First line of a notification body — a prefixed `_identity_label`."""
     prefix = "Task" if identity.project and identity.task_id else "Container"
     return f"{prefix}: {_identity_label(identity, fallback_id)}"
 
@@ -142,11 +142,11 @@ class EventSubscriber:
 
     Args:
         notifier: Desktop notification backend (any ``Notifier`` works).
-        client: Pre-configured [`ClearanceClient`][].  When omitted,
-            one is created on [`start`][] pointing at *socket_path*
-            (defaulting to [`default_clearance_socket_path`][]).
+        client: Pre-configured [`ClearanceClient`][terok_clearance.ClearanceClient].  When omitted,
+            one is created on [`start`][terok_clearance.client.subscriber.EventSubscriber.start] pointing at *socket_path*
+            (defaulting to [`default_clearance_socket_path`][terok_clearance.default_clearance_socket_path]).
         identity_resolver: Turns a short container ID into a
-            [`ContainerIdentity`][] so terok task annotations surface
+            [`ContainerIdentity`][terok_clearance.client.subscriber.ContainerIdentity] so terok task annotations surface
             as "Task: project/task_id · name" bodies.  Called from a
             worker thread so a slow ``podman inspect`` doesn't stall
             the event loop.  ``None`` renders the raw container ID.
@@ -485,7 +485,7 @@ class EventSubscriber:
         """Run the injected identity resolver on a worker thread — never block the loop.
 
         The default resolver shells out to ``podman inspect``; wrapping
-        the sync call in [`asyncio.to_thread`][] keeps the first-miss
+        the sync call in [`asyncio.to_thread`][asyncio.to_thread] keeps the first-miss
         case equally safe whether the resolver ships a cache or not.
         Any exception falls back to an empty identity so one bad
         container never knocks the notification pipeline off the rails.
@@ -501,8 +501,8 @@ class EventSubscriber:
     def _dispatch_lifecycle(self, method: str, *args: str) -> None:
         """Invoke a lifecycle hook on the notifier if it implements one.
 
-        Notifiers that don't care (stock [`DbusNotifier`][],
-        [`NullNotifier`][]) don't expose the method; we no-op rather
+        Notifiers that don't care (stock [`DbusNotifier`][terok_clearance.DbusNotifier],
+        [`NullNotifier`][terok_clearance.NullNotifier]) don't expose the method; we no-op rather
         than error.  Consumers that do care (``CallbackNotifier`` for
         the TUI) get the event.
         """

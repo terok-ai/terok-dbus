@@ -6,7 +6,7 @@
 The D-Bus signal carries only the podman short ID; everything richer is
 recovered host-side from podman annotations and — for the mutable
 human-readable name — from terok's task metadata.  A
-[`ContainerIdentity`][] bundles what's been resolved so the subscriber
+[`ContainerIdentity`][terok_clearance.domain.identity.ContainerIdentity] bundles what's been resolved so the subscriber
 can pick the right body shape (task triple vs. bare container name)
 without juggling three separate resolver return values.
 

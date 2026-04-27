@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for [`terok_clearance.client.identity_resolver`][].
+"""Tests for [`terok_clearance.client.identity_resolver`][terok_clearance.client.identity_resolver].
 
 Annotation data-contract coverage — the notifier must render the
 live task name for any container that publishes
@@ -26,7 +26,7 @@ from terok_clearance.domain.inspector import NullInspector
 
 
 def _fake_inspector(info: ContainerInfo) -> MagicMock:
-    """Return a callable that behaves like [`PodmanInspector`][] but yields *info*."""
+    """Return a callable that behaves like `PodmanInspector` but yields *info*."""
     mock = MagicMock()
     mock.return_value = info
     return mock
@@ -35,7 +35,7 @@ def _fake_inspector(info: ContainerInfo) -> MagicMock:
 def _info(
     *, name: str = "c", project: str = "", task: str = "", meta_path: str = ""
 ) -> ContainerInfo:
-    """Build a [`ContainerInfo`][] with the three terok annotations populated."""
+    """Build a [`ContainerInfo`][terok_clearance.ContainerInfo] with the three terok annotations populated."""
     annotations: dict[str, str] = {}
     if project:
         annotations[ANNOTATION_PROJECT] = project
@@ -133,7 +133,7 @@ class TestTaskMetaPathContract:
         assert identity.task_name == ""
 
     def test_invalid_utf8_falls_back(self, tmp_path: Path) -> None:
-        """Non-UTF8 bytes in the YAML file → soft-fail, not a [`UnicodeDecodeError`][]."""
+        """Non-UTF8 bytes in the YAML file → soft-fail, not a [`UnicodeDecodeError`][UnicodeDecodeError]."""
         meta = tmp_path / "mojibake.yml"
         meta.write_bytes(b"name: \xff\xfe\xfa\n")
         inspector = _fake_inspector(_info(name="c", project="p", task="t", meta_path=str(meta)))
@@ -153,7 +153,7 @@ class TestTaskMetaPathContract:
 
 
 class TestNullInspectorIntegration:
-    """[`NullInspector`][] is the graceful-degradation default for standalone hosts."""
+    """[`NullInspector`][terok_clearance.NullInspector] is the graceful-degradation default for standalone hosts."""
 
     def test_null_inspector_drives_empty_identity(self) -> None:
         """No runtime-aware package installed → resolver returns empty identity."""

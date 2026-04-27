@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
 
-"""Turn a container id into a task-aware [`ContainerIdentity`][].
+"""Turn a container id into a task-aware [`ContainerIdentity`][terok_clearance.client.identity_resolver.ContainerIdentity].
 
-Composes an injected [`ContainerInspector`][] (container name +
+Composes an injected [`ContainerInspector`][terok_clearance.client.identity_resolver.ContainerInspector] (container name +
 OCI annotations, produced by whichever runtime backend the caller
 plugged in) with a data-contract YAML lookup to produce
 notification-ready identities.  Clearance carries no Python-import
@@ -54,13 +54,13 @@ ANNOTATION_TASK_META_PATH = "ai.terok.task_meta_path"
 
 
 class IdentityResolver:
-    """Compose a [`ContainerInspector`][] lookup + task-meta YAML into an identity.
+    """Compose a [`ContainerInspector`][terok_clearance.client.identity_resolver.ContainerInspector] lookup + task-meta YAML into an identity.
 
     Callable: ``resolver(container_id) -> ContainerIdentity``.  Four
     soft-fail paths, all returning a degraded identity that keeps the
     notification pipeline usable:
 
-    * The inspector failed → empty [`ContainerIdentity`][];
+    * The inspector failed → empty [`ContainerIdentity`][terok_clearance.client.identity_resolver.ContainerIdentity];
       the subscriber falls back to the raw container ID.
     * Container carries no terok annotations (a standalone container
       that happened to hit the firewall) → container-name-only.
@@ -71,14 +71,14 @@ class IdentityResolver:
     """
 
     def __init__(self, inspector: ContainerInspector) -> None:
-        """Configure the resolver with a [`ContainerInspector`][] implementation.
+        """Configure the resolver with a [`ContainerInspector`][terok_clearance.client.identity_resolver.ContainerInspector] implementation.
 
         The inspector is required (no default) so the caller owns the
         runtime-selection decision — clearance is runtime-neutral and
         must not reach for a specific backend itself.  The notifier
         entry point picks an appropriate implementation at startup
         (terok-sandbox's ``create_container_inspector`` when available,
-        [`NullInspector`][] otherwise).
+        [`NullInspector`][terok_clearance.NullInspector] otherwise).
         """
         self._inspector = inspector
 
@@ -118,10 +118,10 @@ def _read_task_name(meta_path: str) -> str:
     * Non-absolute path — the annotation contract requires an absolute
       path; a relative path is almost certainly a bug (notifier runs
       under systemd with a PID-scoped cwd the writer can't predict).
-    * Missing file / permission denied (any [`OSError`][]).
-    * Invalid UTF-8 ([`UnicodeDecodeError`][]) — the YAML spec
+    * Missing file / permission denied (any [`OSError`][OSError]).
+    * Invalid UTF-8 ([`UnicodeDecodeError`][UnicodeDecodeError]) — the YAML spec
       assumes UTF-8; treat mojibake like any other unreadable file.
-    * Malformed YAML ([`yaml.YAMLError`][]).
+    * Malformed YAML (`yaml.YAMLError`).
     * Missing ``name`` key or non-string value.
     """
     path = Path(meta_path)

@@ -5,7 +5,7 @@
 
 Separate tiny module so both ends (helper server + hub client) share
 one literal.  The actual socket-hardening helpers live in
-[`terok_clearance.wire.socket`][]; this module just names where
+[`terok_clearance.wire.socket`][terok_clearance.wire.socket]; this module just names where
 to meet.
 """
 

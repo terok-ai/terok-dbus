@@ -48,10 +48,10 @@ async def run_shield(
 ) -> tuple[bool, str]:
     """Invoke ``terok-shield <action> <container> <dest>``; return ``(ok, snippet)``.
 
-    Bounded by [`_SHIELD_CLI_TIMEOUT_S`][].  Spawn errors, non-zero
+    Bounded by `_SHIELD_CLI_TIMEOUT_S`.  Spawn errors, non-zero
     exit, and timeouts all fold into ``(False, reason)`` so callers
     see one shape regardless of how shield misbehaved.  ``snippet``
-    is capped at [`_STDERR_CAP_BYTES`][].
+    is capped at `_STDERR_CAP_BYTES`.
     """
     if not shield_binary:
         return False, "terok-shield not found on PATH"

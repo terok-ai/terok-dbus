@@ -3,8 +3,8 @@
 
 """End-to-end ClearanceClient ↔ ClearanceHub tests over a real varlink socket.
 
-Spins a [`ClearanceHub`][] on a throwaway unix socket in a
-per-test-temp directory, points a [`ClearanceClient`][] at it, and
+Spins a [`ClearanceHub`][terok_clearance.ClearanceHub] on a throwaway unix socket in a
+per-test-temp directory, points a [`ClearanceClient`][terok_clearance.ClearanceClient] at it, and
 exercises the full Subscribe + Verdict round-trips.  The reader→hub
 side is driven by a raw unix-socket writer (mimicking terok-shield's
 ``SocketEmitter``) so the tests don't depend on any real reader
@@ -44,7 +44,7 @@ async def _stub_shield_fail(*args, **kwargs) -> tuple[bool, str]:  # noqa: ANN00
 
 @pytest.fixture
 async def hub(private_runtime_dir: Path) -> AsyncIterator[ClearanceHub]:
-    """A started [`ClearanceHub`][] with a stubbed shield exec."""
+    """A started [`ClearanceHub`][terok_clearance.ClearanceHub] with a stubbed shield exec."""
     h = ClearanceHub(
         clearance_socket=private_runtime_dir / "clearance.sock",
         reader_socket=private_runtime_dir / "reader.sock",
@@ -60,7 +60,7 @@ async def hub(private_runtime_dir: Path) -> AsyncIterator[ClearanceHub]:
 
 @pytest.fixture
 async def client(hub: ClearanceHub) -> AsyncIterator[tuple[ClearanceClient, list]]:
-    """A connected [`ClearanceClient`][] + a list that collects its events."""
+    """A connected [`ClearanceClient`][terok_clearance.ClearanceClient] + a list that collects its events."""
     received: list = []
 
     async def on_event(event) -> None:  # noqa: ANN001

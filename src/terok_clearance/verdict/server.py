@@ -86,14 +86,14 @@ class VerdictServer:
         self._server = None
 
     async def _apply(self, container: str, dest: str, action: str) -> tuple[bool, str]:
-        """Forward one verdict to [`run_shield`][], no validation."""
+        """Forward one verdict to [`run_shield`][terok_clearance.verdict.server.run_shield], no validation."""
         return await run_shield(self._shield_binary, container, dest, action)
 
 
 async def serve() -> None:
     """Bring the verdict helper online and stay up until SIGINT/SIGTERM.
 
-    Mirrors [`terok_clearance.hub.server.serve`][] so the CLI layer
+    Mirrors [`terok_clearance.hub.server.serve`][terok_clearance.hub.server.serve] so the CLI layer
     can dispatch both entrypoints through the same ``asyncio.run``
     pattern.
     """
