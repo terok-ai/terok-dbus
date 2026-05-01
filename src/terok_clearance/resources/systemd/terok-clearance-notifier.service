@@ -51,13 +51,6 @@ SystemCallArchitectures=native
 KeyringMode=private
 UMask=0077
 IPAddressDeny=any
-# AF_UNIX-only: matches the hub's defense-in-depth.  The notifier's
-# own transports (varlink upstream, D-Bus session bus downstream)
-# are both AF_UNIX, and the forked ``podman inspect`` used for
-# task-name enrichment was confirmed to work under this restriction
-# on Fedora Atomic / rootless podman — popups still carry the
-# ``project/task · name`` labels rather than degrading to raw
-# container IDs.
 RestrictAddressFamilies=AF_UNIX
 
 [Install]
