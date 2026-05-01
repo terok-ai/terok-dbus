@@ -51,16 +51,14 @@ SystemCallArchitectures=native
 KeyringMode=private
 UMask=0077
 IPAddressDeny=any
-# RestrictAddressFamilies=AF_UNIX is intentionally NOT applied
-# here, even though it would match the hub's hardening pattern:
-# the notifier forks ``podman inspect`` (via terok_sandbox's
-# PodmanInspector) for task-name enrichment.  Although the
-# subscriber's ``_resolve_identity`` soft-fails to raw container
-# IDs on any inspector exception, "raw container IDs in popups"
-# is itself a real UX regression we want to avoid — operators
-# expect ``project/task · name`` labels.  Restricting families
-# at this unit's level is therefore traded off against the
-# enriched-popup behaviour that's the notifier's whole point.
+# AF_UNIX-only: matches the hub's defense-in-depth.  The notifier's
+# own transports (varlink upstream, D-Bus session bus downstream)
+# are both AF_UNIX, and the forked ``podman inspect`` used for
+# task-name enrichment was confirmed to work under this restriction
+# on Fedora Atomic / rootless podman — popups still carry the
+# ``project/task · name`` labels rather than degrading to raw
+# container IDs.
+RestrictAddressFamilies=AF_UNIX
 
 [Install]
 WantedBy=default.target
