@@ -27,22 +27,14 @@ ExecStart={{BIN}} serve-verdict
 Restart=on-failure
 RestartSec=5
 
-# ── Intentionally NO hardening directives ────────────────────────────
-#
-# This unit execs ``terok-shield`` which in turn execs ``podman
-# unshare nsenter nft``.  Rootless podman re-execs itself to attach
-# the pause process's user+mount namespace, and two kernel-level
-# rules break that re-exec under any real hardening:
-#
-# 1. Seccomp requires ``no_new_privs``; once NNP is on, SELinux
-#    refuses the ``unconfined_t → container_runtime_t`` transition
-#    and every verdict AVC-denies.
-# 2. Mount-namespace isolation breaks setns-across-userns — even a
-#    single ``InaccessiblePaths=`` entry causes the re-exec to fail.
-#
-# The hub (``terok-clearance-hub.service``) *does* carry the full
-# hardening stack; isolating the unhardened shield exec to this
-# helper is the whole point of the split.
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+KeyringMode=private
+UMask=0077
+IPAddressDeny=any
 
 [Install]
 WantedBy=default.target

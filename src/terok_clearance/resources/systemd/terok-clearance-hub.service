@@ -32,11 +32,37 @@ Type=simple
 ExecStart={{BIN}} serve
 Restart=on-failure
 RestartSec=5
+
 NoNewPrivileges=yes
-ProtectSystem=strict
-ProtectHome=tmpfs
+AmbientCapabilities=
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+KeyringMode=private
+UMask=0077
+
+ProtectClock=yes
+ProtectKernelTunables=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectSystem=full
+
 RestrictAddressFamilies=AF_UNIX
 SystemCallFilter=@system-service
+SystemCallFilter=~@resources @privileged
+MemoryDenyWriteExecute=yes
+PrivateNetwork=yes
+IPAddressDeny=any
+
 
 [Install]
 WantedBy=default.target
