@@ -16,9 +16,10 @@ It's one of several operator UIs that subscribe to the hub on the
 ``terok clearance`` Textual app and the embedded ``terok-tui``
 screen); the producer-axis is fixed at shield, so "operator UI for
 shield" rather than "any firewall console" is the right framing.
-Task-name enrichment travels through the
-``ai.terok.task_meta_path`` annotation data contract (see
-[`terok_clearance.client.identity_resolver`][terok_clearance.client.identity_resolver]).
+Task-name enrichment travels in the per-event ``dossier`` field —
+the shield reader resolves the orchestrator's ``dossier.*`` OCI
+annotations at emit time, so the notifier needs no runtime
+inspector of its own.
 """
 
 from __future__ import annotations
@@ -27,9 +28,7 @@ import asyncio
 import contextlib
 import logging
 
-from terok_clearance.client.identity_resolver import IdentityResolver
 from terok_clearance.client.subscriber import EventSubscriber
-from terok_clearance.domain.inspector import ContainerInspector, NullInspector
 from terok_clearance.notifications.factory import create_notifier
 from terok_clearance.notifications.protocol import Notifier
 from terok_clearance.runtime.service import configure_logging, wait_for_shutdown_signal
@@ -46,8 +45,7 @@ async def run_notifier() -> None:
     """Run the notifier until SIGINT/SIGTERM."""
     configure_logging()
     notifier = await create_notifier("terok-clearance")
-    inspector = _pick_inspector()
-    subscriber = EventSubscriber(notifier, identity_resolver=IdentityResolver(inspector))
+    subscriber = EventSubscriber(notifier)
     try:
         await subscriber.start()
     except Exception:
@@ -61,27 +59,6 @@ async def run_notifier() -> None:
         await wait_for_shutdown_signal()
     finally:
         await _teardown(subscriber, notifier)
-
-
-def _pick_inspector() -> ContainerInspector:
-    """Return the best available [`ContainerInspector`][terok_clearance.ContainerInspector] at boot time.
-
-    Runtime selection is a sandbox concern — if terok-sandbox is
-    installed, its ``create_container_inspector`` factory hands back an
-    implementation matched to the active runtime (podman today, krun
-    or something else tomorrow).  Without sandbox, clearance still
-    boots; notifications render with raw container ids via
-    [`NullInspector`][terok_clearance.NullInspector].
-    """
-    try:
-        from terok_sandbox import create_container_inspector
-    except ImportError:
-        _log.info(
-            "terok_sandbox not importable — running with NullInspector; "
-            "notifications will carry container ids only"
-        )
-        return NullInspector()
-    return create_container_inspector()
 
 
 async def _teardown(subscriber: EventSubscriber, notifier: Notifier) -> None:

@@ -3,50 +3,21 @@
 
 """Tests for the clearance notifier daemon.
 
-Covers the glue between the subscriber, the notification backend, and
-the runtime-neutral inspector factory — the parts of the daemon that
-are reachable without a live session D-Bus or varlink hub.  The
-``ExecStart`` entry point ([`main`][terok_clearance.cli.main]) stays out of scope here; the
-systemd unit test in ``test_notifier_install.py`` covers the bits a
-unit-file render test can reach.
+Covers the glue between the subscriber and the notification backend —
+the parts of the daemon that are reachable without a live session
+D-Bus or varlink hub.  Identity resolution lives at the shield reader
+now (per-event ``dossier``), so the daemon owns no inspector wiring of
+its own and there's nothing here to test on that axis.
 """
 
 from __future__ import annotations
 
 import asyncio
-import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from terok_clearance.domain.inspector import NullInspector
 from terok_clearance.notifier import app as notifier_app
-
-# ── _pick_inspector ────────────────────────────────────────
-
-
-def test_pick_inspector_uses_sandbox_factory_when_available() -> None:
-    """If ``terok_sandbox.create_container_inspector`` imports, we use its output."""
-    sentinel = MagicMock(name="sandbox_inspector")
-    fake_sandbox = MagicMock()
-    fake_sandbox.create_container_inspector.return_value = sentinel
-    with patch.dict(sys.modules, {"terok_sandbox": fake_sandbox}):
-        assert notifier_app._pick_inspector() is sentinel
-    fake_sandbox.create_container_inspector.assert_called_once_with()
-
-
-def test_pick_inspector_falls_back_to_null_on_import_error() -> None:
-    """No terok-sandbox installed → [`NullInspector`][terok_clearance.NullInspector], no crash."""
-    # Simulate the import failing regardless of local install state.
-    with patch.object(
-        notifier_app,
-        "_pick_inspector",
-        wraps=notifier_app._pick_inspector,
-    ):
-        with patch.dict(sys.modules, {"terok_sandbox": None}):
-            result = notifier_app._pick_inspector()
-    assert isinstance(result, NullInspector)
-
 
 # ── _teardown ─────────────────────────────────────────────
 
@@ -125,7 +96,6 @@ async def test_run_notifier_happy_path_returns_on_shutdown_signal(
     monkeypatch.setattr(notifier_app, "configure_logging", lambda: None)
     monkeypatch.setattr(notifier_app, "create_notifier", AsyncMock(return_value=notifier))
     monkeypatch.setattr(notifier_app, "EventSubscriber", MagicMock(return_value=subscriber))
-    monkeypatch.setattr(notifier_app, "_pick_inspector", lambda: NullInspector())
     monkeypatch.setattr(notifier_app, "wait_for_shutdown_signal", AsyncMock(return_value=None))
 
     await notifier_app.run_notifier()
@@ -146,7 +116,6 @@ async def test_run_notifier_exits_when_subscriber_start_fails(
     monkeypatch.setattr(notifier_app, "configure_logging", lambda: None)
     monkeypatch.setattr(notifier_app, "create_notifier", AsyncMock(return_value=notifier))
     monkeypatch.setattr(notifier_app, "EventSubscriber", MagicMock(return_value=subscriber))
-    monkeypatch.setattr(notifier_app, "_pick_inspector", lambda: NullInspector())
 
     with pytest.raises(SystemExit) as exc_info:
         await notifier_app.run_notifier()
@@ -168,7 +137,6 @@ async def test_run_notifier_swallows_notifier_disconnect_errors(
     monkeypatch.setattr(notifier_app, "configure_logging", lambda: None)
     monkeypatch.setattr(notifier_app, "create_notifier", AsyncMock(return_value=notifier))
     monkeypatch.setattr(notifier_app, "EventSubscriber", MagicMock(return_value=subscriber))
-    monkeypatch.setattr(notifier_app, "_pick_inspector", lambda: NullInspector())
 
     with pytest.raises(SystemExit):
         await notifier_app.run_notifier()

@@ -25,7 +25,6 @@ from terok_clearance.client.subscriber import (
     EventSubscriber,
 )
 from terok_clearance.domain.events import ClearanceEvent
-from terok_clearance.domain.identity import ContainerIdentity
 
 from .conftest import CONTAINER, DEST_IP, DOMAIN
 
@@ -60,6 +59,7 @@ def _blocked(
     domain: str = DOMAIN,
     port: int = 443,
     proto: int = 6,
+    dossier: dict[str, str] | None = None,
 ) -> ClearanceEvent:
     """Build a ``connection_blocked`` event with sensible defaults."""
     return ClearanceEvent(
@@ -70,6 +70,7 @@ def _blocked(
         port=port,
         proto=proto,
         domain=domain,
+        dossier=dossier or {},
     )
 
 
@@ -345,42 +346,67 @@ class TestVerdictRouting:
         )
 
 
-# ── identity resolution ───────────────────────────────────────────────
+# ── dossier rendering ────────────────────────────────────────────────
 
 
-class TestIdentityResolution:
-    """Injected resolver populates terok-aware notification bodies."""
+class TestDossierRendering:
+    """Per-event dossier shapes the notification body without any resolver."""
 
     @pytest.mark.asyncio
-    async def test_task_identity_surfaces_in_body(self, mock_notifier: AsyncMock) -> None:
-        """A resolved project/task_id renders as 'Task: project/task_id · name'."""
-        resolver = MagicMock(
-            return_value=ContainerIdentity(
-                container_name="sandbox-alpha-1",
-                project="warp-core",
-                task_id="t42",
-                task_name="build",
-            )
+    async def test_task_dossier_surfaces_in_body(
+        self, subscriber: EventSubscriber, mock_notifier: AsyncMock
+    ) -> None:
+        """A ``project + task + name`` dossier renders the task-aware body line."""
+        await subscriber._on_event(
+            _blocked(dossier={"project": "warp-core", "task": "t42", "name": "build"})
         )
-        sub = EventSubscriber(
-            mock_notifier,
-            client=MagicMock(start=AsyncMock(), verdict=AsyncMock(return_value=True)),
-            identity_resolver=resolver,
-        )
-        await sub._on_event(_blocked())
         call = mock_notifier.notify.await_args
         assert "warp-core/t42" in call.args[1]
         assert "build" in call.args[1]
+        # The notifier kwargs reflect the same identity for downstream consumers.
+        assert call.kwargs["project"] == "warp-core"
+        assert call.kwargs["task_id"] == "t42"
+        assert call.kwargs["task_name"] == "build"
 
     @pytest.mark.asyncio
-    async def test_resolver_exception_falls_back_gracefully(self, mock_notifier: AsyncMock) -> None:
-        resolver = MagicMock(side_effect=RuntimeError("podman fell over"))
-        sub = EventSubscriber(
-            mock_notifier,
-            client=MagicMock(start=AsyncMock(), verdict=AsyncMock(return_value=True)),
-            identity_resolver=resolver,
-        )
-        await sub._on_event(_blocked())
-        # Still renders the popup with the container ID fallback.
+    async def test_empty_dossier_falls_back_to_container_id(
+        self, subscriber: EventSubscriber, mock_notifier: AsyncMock
+    ) -> None:
+        """No orchestrator dossier → body labels the bare container ID."""
+        await subscriber._on_event(_blocked(dossier={}))
         call = mock_notifier.notify.await_args
         assert CONTAINER in call.args[1]
+        # Body line is "Container: <id>" (no Task: prefix).
+        assert "Task:" not in call.args[1]
+
+    @pytest.mark.asyncio
+    async def test_container_name_only_dossier_renders_container_line(
+        self, subscriber: EventSubscriber, mock_notifier: AsyncMock
+    ) -> None:
+        """A standalone container with only a ``name`` gets the Container: line."""
+        await subscriber._on_event(_blocked(dossier={"name": "alpine-7"}))
+        call = mock_notifier.notify.await_args
+        assert "Container: alpine-7" in call.args[1]
+
+    @pytest.mark.asyncio
+    async def test_verdict_uses_dossier_captured_at_block_time(
+        self, subscriber: EventSubscriber, mock_notifier: AsyncMock
+    ) -> None:
+        """Verdict popup reuses the block's dossier even if a later event differs."""
+        await subscriber._on_event(
+            _blocked(dossier={"project": "p", "task": "t", "name": "original"})
+        )
+        mock_notifier.notify.reset_mock()
+        await subscriber._on_event(
+            ClearanceEvent(
+                type="verdict_applied",
+                container=CONTAINER,
+                request_id=f"{CONTAINER}:1",
+                action="allow",
+                ok=True,
+                dossier={"project": "p", "task": "t", "name": "renamed"},  # ignored
+            )
+        )
+        call = mock_notifier.notify.await_args
+        assert "original" in call.args[1]
+        assert "renamed" not in call.args[1]

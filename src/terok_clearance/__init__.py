@@ -5,8 +5,8 @@
 
 The operator-UI plane for terok-shield: turns shield's blocked-
 connection events into Allow/Deny prompts and routes the operator's
-verdict back to shield for enforcement.  Three axes of pluggability
-apply, with very different answers:
+verdict back to shield for enforcement.  Two axes of pluggability
+apply:
 
 * **Producer (event source) — closed.**  Shield is the only
   producer.  The wire vocabulary (``shield_up``, ``connection_blocked``,
@@ -14,10 +14,6 @@ apply, with very different answers:
   ``terok-shield allow|deny``.  A non-shield "clearance" wouldn't
   work end-to-end; the package is shield's UI plane, not a generic
   firewall console.
-* **Container runtime — open.**  [`ContainerInspector`][terok_clearance.ContainerInspector]
-  abstracts which runtime is hosting the container being
-  inspected (podman today; krun, containerd, etc. plug in at this
-  seam).  A different axis from the producer one.
 * **Operator UI (consumer) — open.**  Anything that subscribes to
   the hub's varlink stream and implements the
   [`Notifier`][terok_clearance.Notifier] protocol on the verdict-routing side
@@ -25,6 +21,11 @@ apply, with very different answers:
   ([`DbusNotifier`][terok_clearance.DbusNotifier]), the standalone Textual
   ``terok clearance`` app, and the embedded ``terok-tui`` screen all
   ride on this seam.
+
+Container-runtime inspection is no longer a clearance concern: the
+shield reader resolves the orchestrator-supplied dossier at emit
+time and ships it on the wire (``ClearanceEvent.dossier``), so
+clearance has no Python-level coupling to any runtime.
 
 Two unrelated wire formats live under this one package as a result:
 
@@ -40,12 +41,8 @@ Two unrelated wire formats live under this one package as a result:
 """
 
 from terok_clearance.client.client import ClearanceClient
-from terok_clearance.client.identity_resolver import IdentityResolver
 from terok_clearance.client.subscriber import EventSubscriber
-from terok_clearance.domain.container_info import ContainerInfo
 from terok_clearance.domain.events import ClearanceEvent
-from terok_clearance.domain.identity import ContainerIdentity
-from terok_clearance.domain.inspector import ContainerInspector, NullInspector
 from terok_clearance.hub.server import ClearanceHub, serve
 from terok_clearance.notifications.callback import CallbackNotifier, Notification
 from terok_clearance.notifications.desktop import DbusNotifier
@@ -76,16 +73,11 @@ __all__ = [
     "ClearanceClient",
     "ClearanceEvent",
     "ClearanceHub",
-    "ContainerIdentity",
-    "ContainerInfo",
-    "ContainerInspector",
     "DbusNotifier",
     "EventSubscriber",
-    "IdentityResolver",
     "InvalidAction",
     "Notification",
     "Notifier",
-    "NullInspector",
     "NullNotifier",
     "ShieldCliFailed",
     "UnknownRequest",
