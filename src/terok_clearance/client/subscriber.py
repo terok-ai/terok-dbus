@@ -25,6 +25,7 @@ from dbus_fast import Variant
 
 from terok_clearance.client.client import ClearanceClient
 from terok_clearance.domain.events import ClearanceEvent
+from terok_clearance.notifications._sanitize import sanitize_mapping
 
 if TYPE_CHECKING:
     from terok_clearance.notifications.protocol import Notifier
@@ -235,33 +236,36 @@ class EventSubscriber:
     # ── Event dispatch ────────────────────────────────────────────────
 
     async def _on_event(self, event: ClearanceEvent) -> None:
-        """Route one event to the right handler by its ``type`` discriminator."""
+        """Route one event to the right handler by its ``type`` discriminator.
+
+        Dossier values are sanitised once at the boundary — every
+        downstream helper sees pre-escaped, length-capped strings, so
+        the rendering path can interpolate freely without each call
+        site re-running the boundary check.
+        """
+        dossier = sanitize_mapping(event.dossier)
         if event.type == "connection_blocked":
-            await self._handle_connection_blocked(event)
+            await self._handle_connection_blocked(event, dossier)
         elif event.type == "verdict_applied":
             await self._handle_verdict_applied(event)
         elif event.type == "container_started":
             _log.info("Container started: %s", event.container)
-            self._dispatch(self._notify_container_started(event.container, event.dossier))
+            self._dispatch(self._notify_container_started(event.container, dossier))
             self._dispatch_lifecycle("on_container_started", event.container)
         elif event.type == "container_exited":
             _log.info("Container exited: %s (reason=%s)", event.container, event.reason)
             self._dispatch(self._handle_container_exited(event.container))
-            self._dispatch(
-                self._notify_container_exited(event.container, event.reason, event.dossier)
-            )
+            self._dispatch(self._notify_container_exited(event.container, event.reason, dossier))
             self._dispatch_lifecycle("on_container_exited", event.container, event.reason)
         elif event.type == "shield_up":
             _log.info("Shield up: %s", event.container)
-            self._dispatch(self._notify_shield_up(event.container, event.dossier))
+            self._dispatch(self._notify_shield_up(event.container, dossier))
             self._dispatch_lifecycle("on_shield_up", event.container)
         elif event.type in {"shield_down", "shield_down_all"}:
             allow_all = event.type == "shield_down_all"
             _log.info("Shield down: %s (allow_all=%s)", event.container, allow_all)
             self._dispatch(self._handle_shield_down(event.container))
-            self._dispatch(
-                self._notify_shield_down(event.container, event.dossier, allow_all=allow_all)
-            )
+            self._dispatch(self._notify_shield_down(event.container, dossier, allow_all=allow_all))
             self._dispatch_lifecycle(
                 "on_shield_down_all" if allow_all else "on_shield_down",
                 event.container,
@@ -269,13 +273,18 @@ class EventSubscriber:
 
     # ── connection_blocked / verdict_applied handlers ─────────────────
 
-    async def _handle_connection_blocked(self, event: ClearanceEvent) -> None:
+    async def _handle_connection_blocked(
+        self, event: ClearanceEvent, dossier: dict[str, str]
+    ) -> None:
         """Prompt the operator to allow or deny a newly-blocked connection.
 
         A live prompt for the same ``(container, target)`` is reused
         instead of stacked — one decision, one target, one popup — and
         the verdict routes to the latest ``request_id`` because that's
         what the shield is blocking right now.
+
+        ``dossier`` arrives sanitised by [`_on_event`][terok_clearance.client.subscriber.EventSubscriber._on_event];
+        every downstream helper can interpolate it directly.
         """
         target = event.domain or event.dest
         if not target:
@@ -285,7 +294,6 @@ class EventSubscriber:
             )
             return
         proto_name = _PROTO_NAMES.get(event.proto, str(event.proto))
-        dossier = event.dossier
         _log.info(
             "Blocked: %s:%d/%s (%s) [%s]",
             target,

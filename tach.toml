@@ -80,6 +80,15 @@ path = "terok_clearance.notifications.protocol"
 layer = "domain"
 depends_on = []
 
+# Defensive sanitiser for strings crossing the container → desktop
+# boundary.  Pure functions (stdlib only) — sits in the domain layer
+# so any consumer (subscriber, hub, future operator UIs) can apply it
+# without climbing the dep stack.
+[[modules]]
+path = "terok_clearance.notifications._sanitize"
+layer = "domain"
+depends_on = []
+
 [[modules]]
 path = "terok_clearance.notifications.null"
 layer = "infrastructure"
