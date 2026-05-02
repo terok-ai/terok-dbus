@@ -78,7 +78,7 @@ stays untouched so notifier-only edits don't falsely report hub/verdict
 as stale, and vice versa.
 """
 
-_NOTIFIER_UNIT_VERSION = 2
+_NOTIFIER_UNIT_VERSION = 3
 """Version stamp for the standalone notifier unit.
 
 Kept independent of the hub/verdict pair so each install target can
@@ -87,6 +87,15 @@ shapes, different hardening profiles, and different dependencies on
 the session bus.
 
 Version history:
+    3 — ``ProtectHome=tmpfs`` + ``BindReadOnlyPaths=%h/.../pipx/...``
+        replaced with the simpler ``ProtectHome=read-only``.  On
+        Fedora-Atomic-style hosts (``/home`` symlinked to
+        ``/var/home``) the tmpfs+bind combo cooperated badly with
+        systemd's ``%h`` resolution and the notifier could end up
+        with no importable Python at all — silently zero desktop
+        popups.  Read-only is threat-equivalent against the
+        gnome-shell markup-injection vector that hardening targets
+        and works regardless of the venv's actual on-disk path.
     2 — full hub-style hardening profile (ProtectClock,
         Protect{Kernel*,Hostname,Proc}, ProcSubset, PrivateDevices,
         PrivateTmp, PrivateNetwork, ProtectSystem=full, ProtectHome=tmpfs,
