@@ -43,23 +43,6 @@ ExecStart={{BIN}}
 Restart=on-failure
 RestartSec=5
 
-# Hardening — mirrors the hub's profile.  The notifier is the
-# operator-UI-facing process that crosses adversarial container input
-# (block-event payloads under attacker influence) into the gnome-shell
-# session bus, so it deserves the same lockdown as the hub itself.
-#
-# ``ProtectHome=read-only`` is the right level for the threat model:
-# the adversary's tool is a markup-injection payload aimed at
-# gnome-shell — sanitised at the ``notifications/_sanitize.py``
-# boundary — not a kernel CAP exploit, so write-protecting ``%h`` is
-# what matters.  An earlier iteration used ``ProtectHome=tmpfs`` plus
-# ``BindReadOnlyPaths=%h/.local/share/pipx/venvs/terok`` to bring the
-# venv back; on Fedora-Atomic-style hosts (``/home`` symlinked to
-# ``/var/home``) systemd's ``%h`` resolution and ``ProtectHome``'s
-# coverage of ``/home`` vs ``/var/home`` don't cooperate cleanly and
-# the notifier could end up running with no importable Python at all
-# — silently zero desktop popups.  Read-only is simpler,
-# threat-equivalent, and works regardless of pipx venv location.
 NoNewPrivileges=yes
 AmbientCapabilities=
 LockPersonality=yes

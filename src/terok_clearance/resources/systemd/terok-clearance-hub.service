@@ -8,8 +8,7 @@
 # The hub owns the Clearance1 server socket, the reader ingester,
 # subscriber fan-out, and the ``request_id → (container, dest)``
 # authz binding.  Shield exec lives in the companion
-# ``terok-clearance-verdict.service`` — which is why *this* unit
-# can take full seccomp + mount-ns hardening.
+# ``terok-clearance-verdict.service``.
 #
 # The {{BIN}} placeholder is resolved at install time by
 # ``terok-clearance-hub install-service`` (or ``terok setup``).

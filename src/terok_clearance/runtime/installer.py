@@ -69,13 +69,19 @@ _UNITS = (_HUB, _VERDICT)
 #: than the hub/verdict pair.
 _NOTIFIER = (NOTIFIER_UNIT_NAME, "# terok-clearance-notifier-version:")
 
-_PAIR_UNIT_VERSION = 1
+_PAIR_UNIT_VERSION = 2
 """Version stamp shared by hub + verdict units (they are installed together).
 
 Bump when either of those two templates changes semantics — e.g.
 hardening directives, socket paths, argv shape.  ``_NOTIFIER_UNIT_VERSION``
 stays untouched so notifier-only edits don't falsely report hub/verdict
 as stale, and vice versa.
+
+Version history:
+    2 — verdict gains ``AmbientCapabilities=`` and
+        ``RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6``.
+    1 — initial split (hub fully hardened; verdict carries the
+        minimum that doesn't break the shield re-exec).
 """
 
 _NOTIFIER_UNIT_VERSION = 3

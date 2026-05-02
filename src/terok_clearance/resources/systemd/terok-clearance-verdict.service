@@ -6,39 +6,12 @@
 # systemd user service for the terok-clearance verdict helper.
 #
 # Stateless varlink server (``org.terok.ClearanceVerdict1``) that
-# accepts one method — ``Apply(container, dest, action)`` — from the
-# hub and exec's ``terok-shield allow|deny``.  The verdict exec
-# transitively runs ``podman unshare nsenter nft``, which enters
-# rootless podman's existing user+mount namespaces via ``setns``
-# and shells through binaries that need unrestricted access to the
-# kernel's namespace, mount, and netlink machinery.
+# accepts one method — ``Apply(container, dest, action)`` — from
+# the hub and exec's ``terok-shield allow|deny``.  Split from the
+# hub so the hub can take tighter hardening; this unit carries only
+# what the shield ``podman unshare nsenter nft`` re-exec tolerates.
 #
-# Hardening here is therefore the conservative subset that does NOT
-# engage a unit-private mount namespace and does NOT install a
-# seccomp filter — those two classes of directive empirically break
-# the ``podman unshare → nsenter → nft`` re-exec chain at this
-# unit's privilege level.  Specifically:
-#
-#   * ``RestrictNamespaces`` is omitted because podman touches the
-#     user, mount, IPC, UTS, and cgroup namespaces during the
-#     unshare re-exec; restricting any of them aborts the re-exec.
-#   * Every ``Protect*`` and ``Private{Tmp,Devices,Network}``
-#     directive that implies ``PrivateMounts`` is omitted for the
-#     same reason — a unit-private mount namespace breaks
-#     ``setns(MOUNT)`` into rootless podman's pause-process
-#     namespace.
-#   * ``RestrictAddressFamilies`` is omitted because podman/conmon
-#     use netlink during setns and nft management.
-#   * ``MemoryDenyWriteExecute`` is omitted because Go's runtime
-#     maps W+X pages for goroutine stacks (podman is Go).
-#   * ``SystemCallFilter`` is omitted because the chain needs
-#     ``clone3``, ``setns``, ``mount``, and ``pivot_root``.
-#
-# What does apply: the eight prctl-only / per-process knobs in the
-# block below — none of them touch namespacing or seccomp, so they
-# layer cleanly on top of the podman re-exec.  The fully-hardened
-# path (full seccomp + mount-ns isolation + namespace restrictions)
-# lives on the hub side, which is the whole point of the split.
+# The {{BIN}} placeholder is resolved at install time.
 #
 # Logs:
 #   journalctl --user -u terok-clearance-verdict -f
@@ -54,12 +27,14 @@ Restart=on-failure
 RestartSec=5
 
 NoNewPrivileges=yes
+AmbientCapabilities=
 LockPersonality=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 SystemCallArchitectures=native
 KeyringMode=private
 UMask=0077
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
 IPAddressDeny=any
 
 [Install]
