@@ -16,8 +16,9 @@ Two filters apply, in order:
 1. **Control-character squash** — ``\\n``, ``\\r``, ``\\t``, NULs, and any
    ``ord < 0x20`` byte become a single space so a single dossier value can't
    smuggle extra body lines into the popup.  Newlines that the renderer
-   itself inserts between lines in [`_blocked_body`][terok_clearance.client.subscriber._blocked_body]
-   stay intact — sanitisation operates on individual values, not whole bodies.
+   itself inserts between lines in ``client.subscriber._blocked_body``
+   stay intact — sanitisation operates on individual values, not whole
+   bodies.
 2. **Markup escape** — ``&``, ``<``, ``>`` are HTML-escaped so an attacker
    can't close the surrounding span and inject their own markup.  This is
    one-way: the popup shows literal ``&lt;script&gt;`` rather than
