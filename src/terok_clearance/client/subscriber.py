@@ -24,7 +24,14 @@ from typing import TYPE_CHECKING, Any
 from dbus_fast import Variant
 
 from terok_clearance.client.client import ClearanceClient
-from terok_clearance.domain.events import ClearanceEvent
+from terok_clearance.domain.events import (
+    DOSSIER_CONTAINER_NAME,
+    DOSSIER_NAME,
+    DOSSIER_PROJECT,
+    DOSSIER_TASK,
+    ClearanceEvent,
+    Dossier,
+)
 from terok_clearance.notifications._sanitize import sanitize_mapping
 
 if TYPE_CHECKING:
@@ -75,35 +82,35 @@ def _wallclock_hhmmss() -> str:
     return datetime.now().strftime("%H:%M:%S")  # noqa: DTZ005 — display-only
 
 
-def _identity_label(dossier: dict[str, str], fallback_id: str) -> str:
+def _identity_label(dossier: Dossier, fallback_id: str) -> str:
     """Compact identity string — task triple when known, else container name.
 
     Keys consumed from the dossier:
 
-    * ``project`` + ``task`` — present together promotes the popup to the
-      task-aware shape ``project/task[ · name]``.
-    * ``name`` — the human-readable label (task name or container name,
-      depending on what the orchestrator publishes).  Used as the suffix
-      after the task triple, or as the standalone label when no task is
-      bound.
+    * ``DOSSIER_PROJECT`` + ``DOSSIER_TASK`` — present together promotes
+      the popup to the task-aware shape ``project/task[ · name]``.
+    * ``DOSSIER_NAME`` — the human-readable label (task name or
+      container name, depending on what the orchestrator publishes).
+      Used as the suffix after the task triple, or as the standalone
+      label when no task is bound.
     """
-    project = dossier.get("project", "")
-    task = dossier.get("task", "")
-    name = dossier.get("name", "")
+    project = dossier.get(DOSSIER_PROJECT, "")
+    task = dossier.get(DOSSIER_TASK, "")
+    name = dossier.get(DOSSIER_NAME, "")
     if project and task:
         core = f"{project}/{task}"
         return f"{core} · {name}" if name else core
     return name or fallback_id
 
 
-def _identity_line(dossier: dict[str, str], fallback_id: str) -> str:
+def _identity_line(dossier: Dossier, fallback_id: str) -> str:
     """First line of a notification body — a prefixed `_identity_label`."""
-    prefix = "Task" if dossier.get("project") and dossier.get("task") else "Container"
+    prefix = "Task" if dossier.get(DOSSIER_PROJECT) and dossier.get(DOSSIER_TASK) else "Container"
     return f"{prefix}: {_identity_label(dossier, fallback_id)}"
 
 
 def _blocked_body(
-    dossier: dict[str, str],
+    dossier: Dossier,
     fallback_id: str,
     proto_name: str,
     count: int,
@@ -122,7 +129,7 @@ def _blocked_body(
     return "\n".join(lines)
 
 
-def _notify_kwargs(dossier: dict[str, str]) -> dict[str, str]:
+def _notify_kwargs(dossier: Dossier) -> dict[str, str]:
     """Map the dossier dict to the notifier's typed kwargs.
 
     The notifier API still wants per-key arguments (``container_name``,
@@ -132,10 +139,10 @@ def _notify_kwargs(dossier: dict[str, str]) -> dict[str, str]:
     seam.
     """
     return {
-        "container_name": dossier.get("container_name", "") or dossier.get("name", ""),
-        "project": dossier.get("project", ""),
-        "task_id": dossier.get("task", ""),
-        "task_name": dossier.get("name", ""),
+        "container_name": dossier.get(DOSSIER_CONTAINER_NAME, "") or dossier.get(DOSSIER_NAME, ""),
+        "project": dossier.get(DOSSIER_PROJECT, ""),
+        "task_id": dossier.get(DOSSIER_TASK, ""),
+        "task_name": dossier.get(DOSSIER_NAME, ""),
     }
 
 
@@ -159,7 +166,7 @@ class _PendingBlock:
     string — varlink's ``Verdict`` call carries it as ``dest`` (the hub
     dispatches to shield on shape: bare IP vs. dotted domain).
     """
-    dossier: dict[str, str] = field(default_factory=dict)
+    dossier: Dossier = field(default_factory=dict)
     count: int = 1
     first_seen: str = ""
 
@@ -273,9 +280,7 @@ class EventSubscriber:
 
     # ── connection_blocked / verdict_applied handlers ─────────────────
 
-    async def _handle_connection_blocked(
-        self, event: ClearanceEvent, dossier: dict[str, str]
-    ) -> None:
+    async def _handle_connection_blocked(self, event: ClearanceEvent, dossier: Dossier) -> None:
         """Prompt the operator to allow or deny a newly-blocked connection.
 
         A live prompt for the same ``(container, target)`` is reused
@@ -414,7 +419,7 @@ class EventSubscriber:
     # ── shield state / lifecycle popups ───────────────────────────────
 
     async def _notify_shield_down(
-        self, container: str, dossier: dict[str, str], *, allow_all: bool
+        self, container: str, dossier: Dossier, *, allow_all: bool
     ) -> None:
         """Post a persistent security-alert notification for a manual shield drop."""
         label = _identity_label(dossier, container)
@@ -436,7 +441,7 @@ class EventSubscriber:
         )
         self._shield_down_notifs[container] = nid
 
-    async def _notify_shield_up(self, container: str, dossier: dict[str, str]) -> None:
+    async def _notify_shield_up(self, container: str, dossier: Dossier) -> None:
         """Close the stale ShieldDown popup (if any) and post a brief confirmation."""
         if (down_nid := self._shield_down_notifs.pop(container, None)) is not None:
             try:
@@ -453,7 +458,7 @@ class EventSubscriber:
             **_notify_kwargs(dossier),
         )
 
-    async def _notify_container_started(self, container: str, dossier: dict[str, str]) -> None:
+    async def _notify_container_started(self, container: str, dossier: Dossier) -> None:
         """Low-urgency, transient confirmation that a shielded container came online."""
         label = _identity_label(dossier, container)
         await self._notifier.notify(
@@ -465,9 +470,7 @@ class EventSubscriber:
             **_notify_kwargs(dossier),
         )
 
-    async def _notify_container_exited(
-        self, container: str, reason: str, dossier: dict[str, str]
-    ) -> None:
+    async def _notify_container_exited(self, container: str, reason: str, dossier: Dossier) -> None:
         """Low-urgency, transient confirmation that a shielded container stopped."""
         label = _identity_label(dossier, container)
         await self._notifier.notify(

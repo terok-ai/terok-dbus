@@ -29,7 +29,7 @@ from pathlib import Path
 from asyncvarlink import VarlinkInterfaceRegistry, create_unix_server
 from asyncvarlink.serviceinterface import VarlinkServiceInterface
 
-from terok_clearance.domain.events import ClearanceEvent
+from terok_clearance.domain.events import ClearanceEvent, Dossier
 from terok_clearance.hub.ingester import EventIngester
 from terok_clearance.verdict.client import VerdictClient
 from terok_clearance.wire.errors import (
@@ -368,8 +368,8 @@ def _translate_reader_event(wire_type: str, raw: dict) -> ClearanceEvent:
     return ClearanceEvent(type=wire_type, container=container, dossier=dossier)
 
 
-def _coerce_dossier(raw: object) -> dict[str, str]:
-    """Pull a flat ``dict[str, str]`` out of whatever the reader put on the wire.
+def _coerce_dossier(raw: object) -> Dossier:
+    """Pull a ``Dossier`` out of whatever the reader put on the wire.
 
     A missing or non-object payload normalises to ``{}`` rather than crashing
     the translator — the hub must absorb a misshaped event the same way it
