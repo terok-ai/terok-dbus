@@ -1,0 +1,55 @@
+module terok_clearance_notifier 1.0;
+
+# Optional confined domain for the terok-clearance-notifier daemon.
+#
+# The notifier subscribes to clearance-hub events and bridges them to
+# freedesktop desktop notifications via the session D-Bus.  Like the
+# hub, AF_UNIX-only with the systemd hardening stack already baked
+# into the unit template (``ProtectSystem=full``, ``ProtectHome=
+# read-only``, ``IPAddressDeny=any``, …).
+#
+# Different domain from the hub because the surfaces differ — the
+# notifier reads the session bus and emits notifications, the hub
+# owns server-side state.  Splitting them lets a future tightening
+# scope D-Bus reach to only the notifier.
+#
+# Verdict daemon is intentionally NOT confined: it execs
+# ``terok-shield allow|deny`` which does ``podman unshare nsenter
+# nft``, and that exec chain doesn't tolerate tight SELinux labelling.
+# The unit template comment for terok-clearance-verdict.service spells
+# this out — leave it unconfined and harden hub + notifier only.
+#
+# Soak posture: permissive at install time
+# (``semanage permissive -a terok_clearance_notifier_t``).
+
+require {
+    type unconfined_t;
+    type init_t;
+    role system_r;
+    class unix_stream_socket {
+        create bind listen accept
+        read write getattr getopt setopt shutdown
+        connectto
+    };
+    class process { transition sigchld signull signal };
+    class file { read write open getattr execute execute_no_trans };
+    class dir { read search getattr open };
+    class lnk_file { read getattr };
+    class fd use;
+}
+
+type terok_clearance_notifier_t;
+role system_r types terok_clearance_notifier_t;
+
+allow terok_clearance_notifier_t self:process { sigchld signull signal };
+allow terok_clearance_notifier_t self:fd use;
+allow terok_clearance_notifier_t self:unix_stream_socket {
+    create bind listen accept
+    read write getattr getopt setopt shutdown
+    connectto
+};
+
+allow terok_clearance_notifier_t init_t:fd use;
+allow terok_clearance_notifier_t init_t:unix_stream_socket {
+    read write getattr getopt setopt shutdown
+};

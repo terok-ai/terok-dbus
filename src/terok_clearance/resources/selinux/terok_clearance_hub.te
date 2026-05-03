@@ -1,0 +1,70 @@
+module terok_clearance_hub 1.0;
+
+# Optional confined domain for the terok-clearance hub daemon.
+#
+# The hub owns the Clearance1 varlink server socket, the reader
+# ingester, subscriber fan-out, and the ``request_id → (container,
+# dest)`` authz binding.  It runs as a systemd user service with
+# AF_UNIX-only network reach, no IP families, and the heavy systemd
+# hardening stack already baked into the unit template
+# (``ProtectSystem=full``, ``IPAddressDeny=any``,
+# ``MemoryDenyWriteExecute=yes``, …).
+#
+# This module *adds* SELinux label-based access control on top of the
+# existing kernel-level systemd directives.  The two layers stack —
+# the systemd directives constrain capabilities/syscalls/FS reach,
+# this domain adds type-enforced object-level guards.
+#
+# No socket types declared here: clearance is host-side only and does
+# not accept connections from rootless containers.  Only the process
+# domain matters.
+#
+# Domain entry is via the ``SELinuxContext=`` directive that
+# ``install_hardening.sh`` drops into a
+# ``terok-clearance-hub.service.d/hardening-mac.conf`` override.  No
+# file-context (``.fc``) entries shipped — the venv-installed binary
+# moves on every ``pipx upgrade``.
+#
+# Soak posture: permissive at install time
+# (``semanage permissive -a terok_clearance_hub_t``); flipped to
+# enforcing in a follow-up commit once the AVC trail is quiet.
+
+require {
+    type unconfined_t;
+    type init_t;
+    role system_r;
+    class unix_stream_socket {
+        create bind listen accept
+        read write getattr getopt setopt shutdown
+        connectto
+    };
+    class process { transition sigchld signull signal };
+    class file { read write open getattr execute execute_no_trans };
+    class dir { read search getattr open };
+    class lnk_file { read getattr };
+    class fd use;
+}
+
+type terok_clearance_hub_t;
+
+# Bind to system_r so ``system_u:system_r:terok_clearance_hub_t:s0``
+# is a valid context — needed for the systemd directive and for
+# sickbay's ``security_check_context()`` probe.
+role system_r types terok_clearance_hub_t;
+
+# Self-perms — broad initial set; tightening (esp. file/dir access on
+# the varlink socket path under XDG_RUNTIME_DIR, the SQLite-or-
+# whatever-it-uses state) is driven by AVCs collected during the soak.
+allow terok_clearance_hub_t self:process { sigchld signull signal };
+allow terok_clearance_hub_t self:fd use;
+allow terok_clearance_hub_t self:unix_stream_socket {
+    create bind listen accept
+    read write getattr getopt setopt shutdown
+    connectto
+};
+
+# systemd handoff (manager passes inherited fds, signals).
+allow terok_clearance_hub_t init_t:fd use;
+allow terok_clearance_hub_t init_t:unix_stream_socket {
+    read write getattr getopt setopt shutdown
+};

@@ -49,6 +49,17 @@ from terok_clearance.notifications.desktop import DbusNotifier
 from terok_clearance.notifications.factory import create_notifier
 from terok_clearance.notifications.null import NullNotifier
 from terok_clearance.notifications.protocol import Notifier
+from terok_clearance.runtime.hardening import (
+    CONFINED_DOMAINS as HARDENING_CONFINED_DOMAINS,
+    CONFINED_PROFILES as HARDENING_CONFINED_PROFILES,
+    install_command as hardening_install_command,
+    install_script_path as hardening_install_script,
+    is_apparmor_enabled,
+    is_selinux_enabled,
+    loaded_confined_domains as hardening_loaded_confined_domains,
+    loaded_confined_profiles as hardening_loaded_confined_profiles,
+    profile_modes as hardening_profile_modes,
+)
 from terok_clearance.runtime.installer import (
     check_units_outdated,
     install_notifier_service,
@@ -76,6 +87,9 @@ __all__ = [
     "ClearanceHub",
     "DbusNotifier",
     "EventSubscriber",
+    # Hardening (optional MAC layer)
+    "HARDENING_CONFINED_DOMAINS",
+    "HARDENING_CONFINED_PROFILES",
     "InvalidAction",
     "Notification",
     "Notifier",
@@ -87,7 +101,14 @@ __all__ = [
     "configure_logging",
     "create_notifier",
     "default_clearance_socket_path",
+    "hardening_install_command",
+    "hardening_install_script",
+    "hardening_loaded_confined_domains",
+    "hardening_loaded_confined_profiles",
+    "hardening_profile_modes",
     "install_notifier_service",
+    "is_apparmor_enabled",
+    "is_selinux_enabled",
     "read_installed_notifier_unit_version",
     "read_installed_unit_version",
     "serve",
