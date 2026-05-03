@@ -67,25 +67,31 @@ class TestInstallServiceDispatch:
     """Dispatch tests for ``terok-clearance-hub install-service``."""
 
     def test_install_service_calls_install(self, tmp_path, monkeypatch) -> None:
-        """``install-service`` resolves BIN and writes the unit via ``install_service``."""
-        unit_path = tmp_path / "terok-dbus.service"
+        """``install-service`` resolves BIN and writes the units via ``install_service``."""
+        hub_path = tmp_path / "terok-clearance-hub.service"
+        verdict_path = tmp_path / "terok-clearance-verdict.service"
 
         def _fake_install(bin_path):
-            unit_path.write_text(f"ExecStart={bin_path}\n")
-            return unit_path
+            hub_path.write_text(f"ExecStart={bin_path}\n")
+            verdict_path.write_text(f"ExecStart={bin_path}\n")
+            return hub_path, verdict_path
 
         monkeypatch.setattr("terok_clearance.runtime.installer.install_service", _fake_install)
         monkeypatch.setattr("shutil.which", lambda _name: "/opt/terok-clearance")
         with patch("sys.argv", ["terok-clearance", "install-service"]):
             main()
-        assert unit_path.read_text().startswith("ExecStart=/opt/terok-clearance")
+        assert hub_path.read_text().startswith("ExecStart=/opt/terok-clearance")
+        assert verdict_path.read_text().startswith("ExecStart=/opt/terok-clearance")
 
     def test_install_service_respects_explicit_bin_path(self, tmp_path, monkeypatch) -> None:
         seen: dict[str, str] = {}
 
         def _fake_install(bin_path):
             seen["bin_path"] = str(bin_path)
-            return tmp_path / "terok-dbus.service"
+            return (
+                tmp_path / "terok-clearance-hub.service",
+                tmp_path / "terok-clearance-verdict.service",
+            )
 
         monkeypatch.setattr("terok_clearance.runtime.installer.install_service", _fake_install)
         with patch("sys.argv", ["terok-clearance", "install-service", "--bin-path", "/custom/bin"]):

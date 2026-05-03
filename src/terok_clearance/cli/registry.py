@@ -94,7 +94,11 @@ async def _handle_install_service(*, bin_path: str | None = None) -> None:  # NO
     import shutil
     from pathlib import Path as _Path
 
-    from terok_clearance.runtime.installer import install_service
+    from terok_clearance.runtime.installer import (
+        HUB_UNIT_NAME,
+        VERDICT_UNIT_NAME,
+        install_service,
+    )
 
     if bin_path is not None and not bin_path:
         raise SystemExit("install-service: --bin-path cannot be empty")
@@ -102,11 +106,17 @@ async def _handle_install_service(*, bin_path: str | None = None) -> None:  # NO
     # ``install_service(None)`` falls through to ``python -m terok_clearance.cli.main``
     # — no need to spell the argv here when the installer owns the default.
     resolved = _Path(discovered) if discovered is not None else None
-    dest = install_service(resolved)
-    print(f"Installed {dest}")  # noqa: T201
-    print(  # noqa: T201
-        "Enable with: systemctl --user enable --now terok-dbus"
-    )
+    hub_path, verdict_path = install_service(resolved)
+    print(f"Installed {hub_path}")  # noqa: T201
+    print(f"Installed {verdict_path}")  # noqa: T201
+    # ``enable --now`` is a no-op on an already-active unit, so an in-place
+    # rewrite (pipx upgrade, unit-version bump) needs the explicit restart
+    # to actually replace the running process — same gotcha that bit the
+    # sandbox gate primitive (terok-sandbox#239).  Print both verbs so a
+    # first-time install and an upgrade reach for the same recipe.
+    units = f"{HUB_UNIT_NAME} {VERDICT_UNIT_NAME}"
+    print(f"Enable with:  systemctl --user enable --now {units}")  # noqa: T201
+    print(f"Restart with: systemctl --user restart {units}")  # noqa: T201
 
 
 # ── Clearance handler ────────────────────────────────────
