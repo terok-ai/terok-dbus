@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
+# SPDX-License-Identifier: Apache-2.0
+#
+# AppArmor profile for the terok-clearance-notifier daemon.
+#
+# Companion to the SELinux ``terok_clearance_notifier.te`` module.
+# Named profile; activated via the systemd
+# ``AppArmorProfile=terok-clearance-notifier`` directive in the unit
+# drop-in installed by ``install_hardening.sh``.
+#
+# Notifier's job is to subscribe to the clearance hub and emit
+# freedesktop desktop notifications via the session D-Bus.  Path
+# reach is narrower than the hub — no state writes, no varlink
+# socket of its own.
+
+abi <abi/3.0>,
+include <tunables/global>
+
+profile terok-clearance-notifier flags=(complain) {
+    include <abstractions/base>
+    include <abstractions/python>
+    include <abstractions/dbus-session-strict>
+    include <abstractions/freedesktop.org>
+
+    # Python interpreter + venv reach.
+    @{HOME}/.local/{**,**.so,**.so.*} mr,
+    /usr/lib/python3*/** mr,
+    /usr/lib64/python3*/** mr,
+
+    # Notifier reads-only — no state writes.
+    @{HOME}/.config/terok-clearance/** r,
+    @{HOME}/.config/terok/** r,
+
+    # The varlink client connects to the hub socket under
+    # XDG_RUNTIME_DIR — read-only client access.
+    /run/user/@{uid}/terok-clearance/** r,
+
+    # AF_UNIX only — matches the unit's systemd directive.
+    network unix stream,
+
+    # Self-perms.
+    capability,
+    /proc/sys/kernel/random/uuid r,
+    /proc/@{pid}/** r,
+    /sys/devices/system/cpu/** r,
+
+    # Negative pins — notifier has no business writing anywhere
+    # except via the D-Bus session.
+    deny capability sys_admin,
+    deny capability sys_module,
+    deny @{HOME}/.ssh/** rwk,
+    deny /etc/shadow r,
+    deny /etc/sudoers* r,
+}

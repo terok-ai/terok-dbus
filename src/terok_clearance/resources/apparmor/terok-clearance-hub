@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 Jiri Vyskocil
+# SPDX-License-Identifier: Apache-2.0
+#
+# AppArmor profile for the terok-clearance hub daemon.
+#
+# Best-effort hardening companion to the SELinux
+# ``terok_clearance_hub.te`` module.  Named profile (no path
+# attachment); activation is via the systemd
+# ``AppArmorProfile=terok-clearance-hub`` directive that
+# ``install_hardening.sh`` drops into the hub unit.  This sidesteps
+# the venv-installed Python script attribution problem (the kernel
+# sees ``/usr/bin/python3`` at execve, not the hub console script)
+# by letting systemd attach the named profile after fork.
+#
+# The unit template already carries strong systemd-native hardening
+# (``ProtectSystem=full``, ``RestrictAddressFamilies=AF_UNIX``,
+# ``MemoryDenyWriteExecute=yes``, …).  This profile *adds* AppArmor
+# path-based access control on top — the two stack rather than
+# substitute.
+#
+# Initial posture: ``complain`` mode declared in the profile header
+# and reaffirmed by ``aa-complain`` post-load.
+
+abi <abi/3.0>,
+include <tunables/global>
+
+profile terok-clearance-hub flags=(complain) {
+    include <abstractions/base>
+    include <abstractions/python>
+    include <abstractions/dbus-session-strict>
+
+    # Python interpreter + venv reach (broad until soak narrows).
+    @{HOME}/.local/{**,**.so,**.so.*} mr,
+    /usr/lib/python3*/** mr,
+    /usr/lib64/python3*/** mr,
+
+    # Hub state — varlink socket lives under XDG_RUNTIME_DIR; any
+    # persisted state under the clearance state dir.
+    /run/user/@{uid}/terok-clearance/** rwk,
+    @{HOME}/.local/state/terok-clearance/** rwk,
+    @{HOME}/.local/share/terok-clearance/** rwk,
+
+    # Configuration — read-only.
+    @{HOME}/.config/terok-clearance/** r,
+    @{HOME}/.config/terok/** r,
+
+    # AF_UNIX only — matches the systemd
+    # ``RestrictAddressFamilies=AF_UNIX`` already in the unit.
+    network unix stream,
+
+    # Self-perms.
+    capability,
+    /proc/sys/kernel/random/uuid r,
+    /proc/@{pid}/** r,
+    /sys/devices/system/cpu/** r,
+
+    # Negative pins — clearance has no business reading SSH keys or
+    # privileged system files.  ``ProtectHome=`` in the unit covers
+    # most of this from the systemd side; restating here makes the
+    # AppArmor side explicit too.
+    deny capability sys_admin,
+    deny capability sys_module,
+    deny @{HOME}/.ssh/** rwk,
+    deny /etc/shadow r,
+    deny /etc/sudoers* r,
+}
