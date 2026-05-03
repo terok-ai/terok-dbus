@@ -69,7 +69,7 @@ _UNITS = (_HUB, _VERDICT)
 #: than the hub/verdict pair.
 _NOTIFIER = (NOTIFIER_UNIT_NAME, "# terok-clearance-notifier-version:")
 
-_PAIR_UNIT_VERSION = 2
+_PAIR_UNIT_VERSION = 3
 """Version stamp shared by hub + verdict units (they are installed together).
 
 Bump when either of those two templates changes semantics — e.g.
@@ -78,13 +78,15 @@ stays untouched so notifier-only edits don't falsely report hub/verdict
 as stale, and vice versa.
 
 Version history:
+    3 — version-stamp marker moves to line 1 (cross-package convention
+        with terok-sandbox; line-1 ownership check is the contract).
     2 — verdict gains ``AmbientCapabilities=`` and
         ``RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6``.
     1 — initial split (hub fully hardened; verdict carries the
         minimum that doesn't break the shield re-exec).
 """
 
-_NOTIFIER_UNIT_VERSION = 3
+_NOTIFIER_UNIT_VERSION = 4
 """Version stamp for the standalone notifier unit.
 
 Kept independent of the hub/verdict pair so each install target can
@@ -93,6 +95,8 @@ shapes, different hardening profiles, and different dependencies on
 the session bus.
 
 Version history:
+    4 — version-stamp marker moves to line 1 (cross-package convention
+        with terok-sandbox; line-1 ownership check is the contract).
     3 — ``ProtectHome=tmpfs`` + ``BindReadOnlyPaths=%h/.../pipx/...``
         replaced with the simpler ``ProtectHome=read-only``.  On
         Fedora-Atomic-style hosts (``/home`` symlinked to

@@ -1,7 +1,6 @@
+# terok-clearance-hub-version: {{UNIT_VERSION}}
 # SPDX-FileCopyrightText: 2026 Jiri Vyskocil
 # SPDX-License-Identifier: Apache-2.0
-#
-# terok-clearance-hub-version: {{UNIT_VERSION}}
 #
 # systemd user service for the terok-clearance varlink hub.
 #

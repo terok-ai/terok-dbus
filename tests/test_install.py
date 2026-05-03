@@ -193,6 +193,30 @@ class TestUnitVersion:
             in notifier_text
         )
 
+    @pytest.mark.parametrize(
+        ("unit_name", "marker_prefix"),
+        [
+            (HUB_UNIT_NAME, "# terok-clearance-hub-version:"),
+            (VERDICT_UNIT_NAME, "# terok-clearance-verdict-version:"),
+            (NOTIFIER_UNIT_NAME, "# terok-clearance-notifier-version:"),
+        ],
+    )
+    def test_version_marker_is_on_line_1(self, unit_name: str, marker_prefix: str) -> None:
+        """The version marker must be the first line of every shipped template.
+
+        Cross-package convention with terok-sandbox: the line-1 marker is
+        the ownership contract that lets sandbox's orphan-sweep glob
+        recognise our files without false positives on user-authored
+        units that share the name prefix.  Clearance has no orphan-sweep
+        of its own today, but adopting the same convention keeps the
+        whole terok stack consistent and machine-checks the convention
+        against accidental reorderings.
+        """
+        first_line = _install._read_template(unit_name).splitlines()[0]
+        assert first_line.startswith(marker_prefix), (
+            f"{unit_name}: expected line 1 to start with {marker_prefix!r}, got {first_line!r}"
+        )
+
     def test_check_outdated_silent_on_fresh_install(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
