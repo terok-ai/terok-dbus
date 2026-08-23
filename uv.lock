@@ -1574,7 +1574,7 @@ requires-dist = [
     { name = "asyncvarlink", specifier = "==0.3.2" },
     { name = "dbus-fast", specifier = "~=5.0" },
     { name = "pyyaml", specifier = "~=6.0" },
-    { name = "terok-util", git = "https://github.com/sliwowitz/terok-util.git?rev=feat%2Fmatrix-manjaro-slot" },
+    { name = "terok-util", url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.1a6/terok_util-0.3.1a6-py3-none-any.whl" },
 ]
 
 [package.metadata.requires-dev]
@@ -1606,12 +1606,22 @@ test = [
 
 [[package]]
 name = "terok-util"
-version = "0.3.1a6.dev97+ga587ca364"
-source = { git = "https://github.com/sliwowitz/terok-util.git?rev=feat%2Fmatrix-manjaro-slot#a587ca364b11ca09f3836aa48fdba57fb8263303" }
+version = "0.3.1a6"
+source = { url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.1a6/terok_util-0.3.1a6-py3-none-any.whl" }
 dependencies = [
     { name = "jinja2" },
     { name = "platformdirs" },
     { name = "ruamel-yaml" },
+]
+wheels = [
+    { url = "https://github.com/terok-ai/terok-util/releases/download/v0.3.1a6/terok_util-0.3.1a6-py3-none-any.whl", hash = "sha256:1b7fe2c3599eed06a42131ddad490d6ac81863cb430715f7708c04364f447ccd" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "jinja2", specifier = "~=3.1" },
+    { name = "platformdirs", specifier = "~=4.11" },
+    { name = "ruamel-yaml", specifier = "==0.19.1" },
 ]
 
 [[package]]
