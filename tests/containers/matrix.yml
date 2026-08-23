@@ -25,6 +25,7 @@ slots:
   alpine:
   void:
   mageia:
+  manjaro:
 
 phases:
   - name: unit tests

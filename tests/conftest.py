@@ -11,6 +11,12 @@ from pathlib import Path
 
 import pytest
 
+# Activate dbusmock's pytest fixtures (dbusmock_session, dbusmock_system).
+# pytest_plugins must live in the top-level conftest. pytest 8.4 and later
+# reject it in a non-top-level conftest. Only the integration tests use these
+# fixtures. This declaration does not affect the unit suite.
+pytest_plugins = "dbusmock.pytest_fixtures"
+
 # ── Test data constants ────────────────────────────────────────────────
 # Reusable across unit and integration tests for subscriber scenarios.
 

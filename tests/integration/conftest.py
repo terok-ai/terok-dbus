@@ -22,8 +22,9 @@ from terok_clearance import create_notifier
 from terok_clearance.notifications.desktop import DbusNotifier
 from terok_clearance.notifications.protocol import Notifier
 
-# Activate dbusmock's pytest fixtures (dbusmock_session, dbusmock_system).
-pytest_plugins = "dbusmock.pytest_fixtures"
+# The top-level tests/conftest.py activates dbusmock's pytest fixtures
+# (dbusmock_session, dbusmock_system) through pytest_plugins. pytest forbids
+# that declaration in a non-top-level conftest.
 
 
 # ── Matrix capability contract ───────────────────────────────────────

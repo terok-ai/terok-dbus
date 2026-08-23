@@ -36,7 +36,7 @@ dependencies = [
     "dbus-fast~=5.0",
     "asyncvarlink==0.3.2",
     "pyyaml~=6.0",
-    "terok-util @ https://github.com/terok-ai/terok-util/releases/download/v0.3.1a5/terok_util-0.3.1a5-py3-none-any.whl",
+    "terok-util @ https://github.com/terok-ai/terok-util/releases/download/v0.3.1a6/terok_util-0.3.1a6-py3-none-any.whl",
 ]
 
 [project.urls]
@@ -82,7 +82,7 @@ default-groups = ["dev", "test"]
 
 [tool.hatch.version]
 source = "vcs"
-fallback-version = "0.8.0a8"
+fallback-version = "0.8.0a9"
 
 [tool.hatch.metadata]
 allow-direct-references = true
