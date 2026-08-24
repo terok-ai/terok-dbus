@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   checks:
-    uses: terok-ai/terok-util/.github/workflows/fleet-checks.yml@v0.3.1a4
+    uses: terok-ai/terok-util/.github/workflows/fleet-checks.yml@v0.3.1a5
     with:
       run-typecheck: false
 
